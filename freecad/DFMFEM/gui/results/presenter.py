@@ -439,8 +439,8 @@ class TaskResultsPresenter:
                         pass
         if image is not None and not image.isNull():
             result_label = self._selected_fem_object()
-            caption = (f"{result_label.Label} — vista FEM"
-                       if result_label is not None else "Vista FEM")
+            caption = (f"{result_label.Label} — FEM view"
+                       if result_label is not None else "FEM view")
             tab.add_capture(image, caption)
 
     def handle_fem_report(self) -> None:

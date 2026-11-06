@@ -265,7 +265,11 @@ def image_jobs(
                 if id(f) in picks and image_eligible(f, settings):
                     jobs.append(ImageJob(finding_image_key(f), [f], finding_caption(f)))
     if settings.include_fem_images:
-        jobs.extend(ImageJob(image.key, [], image.caption, 4 / 3, image.image)
+        jobs.extend(ImageJob(
+            image.key, [], image.caption,
+            (image.image.width() / image.image.height()
+             if image.image is not None and image.image.height() else 4 / 3),
+            image.image)
                     for image in data.fem_images if image.include and image.image is not None)
     return jobs
 

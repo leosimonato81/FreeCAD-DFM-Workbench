@@ -26,8 +26,10 @@ class FEMReportTab(QtWidgets.QWidget):
         root.setSpacing(8)
 
         intro = QtWidgets.QLabel(
-            "Use os resultados FEM existentes no documento. A captura guarda a viewport atual, "
-            "incluindo o mapa de cores FEM e o enquadramento."
+            "Relatório combinado DFM + FEM. Selecione um resultado FEM já calculado e deixe "
+            "a visualização FEM ativa antes de capturar. As capturas FEM preservam o mapa de "
+            "cores e a câmera; os realces DFM ficam desligados por padrão. No PDF, DFM e FEM "
+            "aparecem em seções separadas para avaliação profissional."
         )
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -70,9 +72,11 @@ class FEMReportTab(QtWidgets.QWidget):
         self._dfm_options = dfm_options
 
         image_header = QtWidgets.QHBoxLayout()
-        image_header.addWidget(QtWidgets.QLabel("Capturas da viewport"))
+        image_header.addWidget(QtWidgets.QLabel("Imagens FEM para o relatório"))
         image_header.addStretch(1)
-        self.capture_button = QtWidgets.QPushButton("Capturar vista FEM atual")
+        self.capture_button = QtWidgets.QPushButton("Adicionar captura FEM da vista atual")
+        self.capture_button.setToolTip(
+            "Salva a câmera e o mapa FEM atualmente visíveis. Faça uma captura por vista desejada.")
         self.capture_button.clicked.connect(self.capture_requested)
         image_header.addWidget(self.capture_button)
         root.addLayout(image_header)
@@ -93,7 +97,7 @@ class FEMReportTab(QtWidgets.QWidget):
         buttons = QtWidgets.QHBoxLayout()
         self.configure_button = QtWidgets.QPushButton("Configurar relatório…")
         self.configure_button.clicked.connect(self.configure_requested)
-        self.export_button = QtWidgets.QPushButton("Exportar PDF…")
+        self.export_button = QtWidgets.QPushButton("Revisar e exportar relatório…")
         self.export_button.setDefault(True)
         self.export_button.clicked.connect(self.export_requested)
         buttons.addWidget(self.configure_button)
@@ -116,9 +120,11 @@ class FEMReportTab(QtWidgets.QWidget):
             self.summary_label.setText("Nenhum objeto FEM de resultados foi encontrado neste documento.")
             self.export_button.setEnabled(False)
             self.configure_button.setEnabled(False)
+            self.capture_button.setEnabled(False)
         else:
             self.export_button.setEnabled(True)
             self.configure_button.setEnabled(True)
+            self.capture_button.setEnabled(True)
         self.selection_changed.emit()
 
     def set_dfm_available(self, available: bool) -> None:
