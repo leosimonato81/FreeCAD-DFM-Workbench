@@ -89,8 +89,6 @@ class TaskResultsPresenter:
         self._markers_active = dfm_params().GetBool("ResultsShowMarkersDefault", False)
 
         self.view.on_fem_capture = self.handle_fem_capture
-        self.view.on_fem_export = self.handle_fem_report
-        self.view.on_fem_configure = self.handle_fem_report
         self.view.fem_report_tab.set_dfm_available(True)
         self.view.fem_report_tab.selection_changed.connect(self._fem_selection_changed)
         self._refresh_fem_results()
@@ -303,7 +301,7 @@ class TaskResultsPresenter:
 
     # ── PDF report ──────────────────────────────────────
 
-    def _report_data(self, include_fem: bool = False):
+    def _report_data(self, include_fem: bool | None = None):
         from ...gui.report.data import ReportData
 
         process = self.model.process
@@ -325,6 +323,7 @@ class TaskResultsPresenter:
             feedback=process.rule_feedback.get,
             derived_hint=lambda rule: process.archetype.derived_rules.get(rule, ""),
         )
+        include_fem = self.view.export_tab.include_fem if include_fem is None else include_fem
         if include_fem:
             tab = self.view.fem_report_tab
             result_obj = self._selected_fem_object()
@@ -335,13 +334,19 @@ class TaskResultsPresenter:
             data.fem_images = tab.selected_images()
         return data
 
-    def _report_settings(self, include_fem: bool = False):
+    def _report_settings(self, include_fem: bool | None = None):
         from ...gui.report.settings import ReportSettings
 
         settings = ReportSettings.load().copy(**self._report_fields)
+        include_fem = self.view.export_tab.include_fem if include_fem is None else include_fem
         if not include_fem:
-            return settings
+            return settings.copy(include_fem_images=False, include_fem_tables=False,
+                                 include_fem_csv=False)
         tab = self.view.fem_report_tab
+        if settings.title == "DFM report: {model}":
+            settings.title = "DFM + FEM report: {model}"
+        if settings.file_name == "{document}_{material}_DFM_{date}":
+            settings.file_name = "{document}_DFM_FEM_{date}"
         return settings.copy(
             include_dfm_images=tab.include_dfm_images.isChecked(),
             include_dfm_tables=tab.include_dfm_tables.isChecked(),
@@ -349,6 +354,7 @@ class TaskResultsPresenter:
             include_fem_tables=tab.include_tables.isChecked(),
             include_fem_csv=tab.include_csv.isChecked(),
             dfm_highlights_in_fem_view=tab.include_dfm_highlights.isChecked(),
+            fem_follow_dfm_views=tab.follow_dfm_cameras.isChecked(),
         )
 
     def _refresh_fem_results(self) -> None:
@@ -398,14 +404,31 @@ class TaskResultsPresenter:
         old_highlight = self.bridge.current_highlight()
         hide_dfm = not tab.include_dfm_highlights.isChecked()
         markers_were_active = self._markers_active
+        result_obj = self._selected_fem_object()
+        try:
+            target_was_visible = bool(self.bridge.target_object.ViewObject.Visibility)
+        except Exception:
+            target_was_visible = None
+        result_visibility = []
         temp_path = None
         image = None
         try:
+            from ...fem.results import iter_result_objects
+
+            doc = getattr(App, "ActiveDocument", None)
+            for fem_obj in iter_result_objects(doc):
+                try:
+                    visible = bool(fem_obj.ViewObject.Visibility)
+                    result_visibility.append((fem_obj, visible))
+                    fem_obj.ViewObject.Visibility = fem_obj is result_obj
+                except Exception:
+                    continue
             if hide_dfm:
                 self.bridge.remove_finding_overlay()
                 if markers_were_active:
                     self._marker_controller.deactivate()
                 self.bridge.highlight_faces_and_edges_by_index([], [])
+                self.bridge.set_target_visible(False)
             fd, temp_path = tempfile.mkstemp(prefix="dfm_fem_view_", suffix=".png")
             os.close(fd)
             Gui.updateGui()
@@ -416,6 +439,11 @@ class TaskResultsPresenter:
             QtWidgets.QMessageBox.warning(self.view.form, "FEM viewport capture", str(exc))
         finally:
             try:
+                for fem_obj, visible in result_visibility:
+                    try:
+                        fem_obj.ViewObject.Visibility = visible
+                    except Exception:
+                        continue
                 if hide_dfm:
                     faces, edges = old_highlight
                     self.bridge.highlight_faces_and_edges_by_index(faces, edges)
@@ -431,6 +459,8 @@ class TaskResultsPresenter:
                 if hide_dfm and self._active_finding is not None:
                     self.bridge.show_finding_overlay(
                         self._active_finding, severity_color(self._active_finding.severity))
+                if target_was_visible is not None:
+                    self.bridge.set_target_visible(target_was_visible)
             finally:
                 if temp_path:
                     try:
@@ -438,37 +468,9 @@ class TaskResultsPresenter:
                     except OSError:
                         pass
         if image is not None and not image.isNull():
-            result_label = self._selected_fem_object()
-            caption = (f"{result_label.Label} — FEM view"
-                       if result_label is not None else "FEM view")
+            caption = (f"{result_obj.Label} — FEM view"
+                       if result_obj is not None else "FEM view")
             tab.add_capture(image, caption)
-
-    def handle_fem_report(self) -> None:
-        from ...gui.report.dialog import ReportDialog
-
-        data = self._report_data(include_fem=True)
-        if data.fem_result is None:
-            QtWidgets.QMessageBox.information(
-                self.view.form, "FEM report", "No FEM result object is selected in the document.")
-            return
-        settings = self._report_settings(include_fem=True)
-        if settings.title == "DFM report: {model}":
-            settings.title = "DFM + FEM report: {model}"
-        if settings.file_name == "{document}_{material}_DFM_{date}":
-            settings.file_name = "{document}_DFM_FEM_{date}"
-        dialog = ReportDialog(
-            data, settings, self._report_capture,
-            parent=Gui.getMainWindow(),
-        )
-        dialog.exec()
-        self._remember_report_fields(dialog.settings)
-        tab = self.view.fem_report_tab
-        tab.include_dfm_images.setChecked(dialog.settings.include_dfm_images)
-        tab.include_dfm_tables.setChecked(dialog.settings.include_dfm_tables)
-        tab.include_images.setChecked(dialog.settings.include_fem_images)
-        tab.include_tables.setChecked(dialog.settings.include_fem_tables)
-        tab.include_csv.setChecked(dialog.settings.include_fem_csv)
-        self._refresh_report_preview(force=True)
 
     def _report_capture(self, settings):
         from ...gui.report.capture import ViewportCapture
@@ -486,6 +488,8 @@ class TaskResultsPresenter:
             self.bridge, settings,
             hide_annotations=self._marker_controller.deactivate,
             show_annotations=show_markers,
+            fem_result_object=(self._selected_fem_object()
+                               if self.view.export_tab.include_fem else None),
         )
 
     def _remember_report_fields(self, settings) -> None:
@@ -501,6 +505,7 @@ class TaskResultsPresenter:
         )
         dialog.exec()
         self._remember_report_fields(dialog.settings)
+        self._sync_report_content_settings(dialog.settings)
         self._refresh_report_preview(force=True)
 
     def handle_export_pdf(self):
@@ -527,6 +532,16 @@ class TaskResultsPresenter:
         tab.pdf_configure_requested.connect(self.handle_configure_pdf)
         tab.pdf_preset_changed.connect(lambda _mode: self._refresh_report_preview(force=True))
         tab.preview_needed.connect(self._refresh_report_preview)
+        tab.report_content_changed.connect(lambda: self._refresh_report_preview(force=True))
+
+    def _sync_report_content_settings(self, settings) -> None:
+        tab = self.view.fem_report_tab
+        tab.include_dfm_images.setChecked(settings.include_dfm_images)
+        tab.include_dfm_tables.setChecked(settings.include_dfm_tables)
+        tab.include_images.setChecked(settings.include_fem_images)
+        tab.include_tables.setChecked(settings.include_fem_tables)
+        tab.include_csv.setChecked(settings.include_fem_csv)
+        tab.follow_dfm_cameras.setChecked(settings.fem_follow_dfm_views)
 
     def _refresh_report_preview(self, force: bool = False):
         """Give the Export tab a thumbnail and page count for each report preset.

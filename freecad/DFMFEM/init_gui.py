@@ -5,7 +5,6 @@
 import FreeCAD as App  # type: ignore
 import FreeCADGui as Gui  # type: ignore
 
-from .gui import fem_report_task as _fem_report_task
 from .gui import preferences
 from .gui import task_setup, task_show_normals, process_library
 from .gui.preferences import (
@@ -31,7 +30,6 @@ class DFMFEMWorkbench(Gui.Workbench):
             "DFMFEM_ProcessLibrary",
             "DFMFEM_DraftAnalysis",
             "DFMFEM_ThicknessAnalysis",
-            "DFMFEM_FEMReport",
         ]
         self.appendToolbar("DFM + FEM", self.list)
         self.appendMenu("DFM + FEM", self.list)

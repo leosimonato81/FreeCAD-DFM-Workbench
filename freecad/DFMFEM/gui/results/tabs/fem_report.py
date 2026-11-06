@@ -16,9 +16,11 @@ class FEMReportTab(QtWidgets.QWidget):
     export_requested = QtCore.Signal()
     configure_requested = QtCore.Signal()
     selection_changed = QtCore.Signal()
+    results_available = QtCore.Signal(bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, embedded: bool = False):
         super().__init__(parent)
+        self.embedded = embedded
         self._images: dict[str, ReportImage] = {}
 
         root = QtWidgets.QVBoxLayout(self)
@@ -28,11 +30,12 @@ class FEMReportTab(QtWidgets.QWidget):
         intro = QtWidgets.QLabel(
             "Relatório combinado DFM + FEM. Selecione um resultado FEM já calculado e deixe "
             "a visualização FEM ativa antes de capturar. As capturas FEM preservam o mapa de "
-            "cores e a câmera; os realces DFM ficam desligados por padrão. No PDF, DFM e FEM "
-            "aparecem em seções separadas para avaliação profissional."
+            "cores e a câmera. O relatório também pode gerar imagens FEM limpas usando os "
+            "enquadramentos automáticos DFM."
         )
         intro.setWordWrap(True)
-        root.addWidget(intro)
+        if not embedded:
+            root.addWidget(intro)
 
         result_row = QtWidgets.QHBoxLayout()
         result_row.addWidget(QtWidgets.QLabel("Resultado"))
@@ -54,10 +57,15 @@ class FEMReportTab(QtWidgets.QWidget):
         self.include_csv = QtWidgets.QCheckBox("Exportar também os valores por nó em CSV")
         self.include_dfm_highlights = QtWidgets.QCheckBox("Mostrar realces DFM nas capturas FEM")
         self.include_dfm_highlights.setChecked(False)
+        self.follow_dfm_cameras = QtWidgets.QCheckBox(
+            "Gerar vistas FEM limpas nos mesmos enquadramentos automáticos do DFM")
+        self.follow_dfm_cameras.setChecked(True)
         options_layout.addWidget(self.include_images)
         options_layout.addWidget(self.include_tables)
         options_layout.addWidget(self.include_csv)
-        options_layout.addWidget(self.include_dfm_highlights)
+        options_layout.addWidget(self.follow_dfm_cameras)
+        if not embedded:
+            options_layout.addWidget(self.include_dfm_highlights)
         root.addWidget(options)
 
         dfm_options = QtWidgets.QGroupBox("Conteúdo DFM (quando disponível)")
@@ -68,7 +76,8 @@ class FEMReportTab(QtWidgets.QWidget):
         self.include_dfm_tables.setChecked(True)
         dfm_layout.addWidget(self.include_dfm_images)
         dfm_layout.addWidget(self.include_dfm_tables)
-        root.addWidget(dfm_options)
+        if not embedded:
+            root.addWidget(dfm_options)
         self._dfm_options = dfm_options
 
         image_header = QtWidgets.QHBoxLayout()
@@ -94,16 +103,23 @@ class FEMReportTab(QtWidgets.QWidget):
         image_actions.addStretch(1)
         root.addLayout(image_actions)
 
-        buttons = QtWidgets.QHBoxLayout()
         self.configure_button = QtWidgets.QPushButton("Configurar relatório…")
-        self.configure_button.clicked.connect(self.configure_requested)
         self.export_button = QtWidgets.QPushButton("Revisar e exportar relatório…")
-        self.export_button.setDefault(True)
-        self.export_button.clicked.connect(self.export_requested)
-        buttons.addWidget(self.configure_button)
-        buttons.addStretch(1)
-        buttons.addWidget(self.export_button)
-        root.addLayout(buttons)
+        if not embedded:
+            buttons = QtWidgets.QHBoxLayout()
+            self.configure_button.clicked.connect(self.configure_requested)
+            self.export_button.setDefault(True)
+            self.export_button.clicked.connect(self.export_requested)
+            buttons.addWidget(self.configure_button)
+            buttons.addStretch(1)
+            buttons.addWidget(self.export_button)
+            root.addLayout(buttons)
+        else:
+            self.configure_button.hide()
+            self.export_button.hide()
+            self.include_dfm_images.hide()
+            self.include_dfm_tables.hide()
+            self._dfm_options.hide()
 
     def set_results(self, objects: list[Any], selected_name: str = "") -> None:
         self.result_combo.blockSignals(True)
@@ -121,10 +137,13 @@ class FEMReportTab(QtWidgets.QWidget):
             self.export_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.capture_button.setEnabled(False)
+            self.follow_dfm_cameras.setEnabled(False)
         else:
             self.export_button.setEnabled(True)
             self.configure_button.setEnabled(True)
             self.capture_button.setEnabled(True)
+            self.follow_dfm_cameras.setEnabled(True)
+        self.results_available.emit(bool(objects))
         self.selection_changed.emit()
 
     def set_dfm_available(self, available: bool) -> None:

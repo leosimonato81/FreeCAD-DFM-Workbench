@@ -529,7 +529,12 @@ class ReportDialog(QtWidgets.QDialog):
         self.cb_include_dfm_images = self._bind_check("include_dfm_images", "DFM images")
         self.cb_include_dfm_images.setEnabled(self.data.dfm_available)
         f.add(self.cb_include_dfm_images)
-        f.add(self._bind_check("include_fem_images", "FEM viewport images"))
+        self.cb_include_fem_images = self._bind_check("include_fem_images", "FEM viewport images")
+        f.add(self.cb_include_fem_images)
+        self.cb_fem_follow_dfm = self._bind_check(
+            "fem_follow_dfm_views",
+            "Create clean FEM views using the selected automatic DFM camera positions")
+        f.add(self.cb_fem_follow_dfm)
         self.cb_include_dfm_tables = self._bind_check("include_dfm_tables", "DFM tables")
         self.cb_include_dfm_tables.setEnabled(self.data.dfm_available)
         f.add(self.cb_include_dfm_tables)
@@ -804,6 +809,8 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _refresh_dependents(self) -> None:
         s = self.settings
+        self.cb_fem_follow_dfm.setEnabled(
+            bool(s.include_fem_images and self.data.dfm_available and self.data.fem_result is not None))
         if self.data.dfm_available:
             self._overview_row.setEnabled(s.overview_image)
             self._design_row.setEnabled(s.overview_image)

@@ -242,28 +242,43 @@ def image_jobs(
 ) -> list[ImageJob]:
     """Every image the report needs, in the order they appear."""
     jobs: list[ImageJob] = []
-    if data.dfm_available and settings.include_dfm_images and settings.overview_image:
+    dfm_jobs: list[ImageJob] = []
+    need_dfm_camera_jobs = (settings.include_dfm_images or (
+        settings.include_fem_images and settings.fem_follow_dfm_views))
+    if data.dfm_available and need_dfm_camera_jobs and settings.overview_image:
         shown = [f for s in rule_sections(data, settings) for f in s.findings if not f.ignore]
         if settings.design_image:
             # Side by side: the part as its designer colored it, then the findings.
-            jobs.append(ImageJob("design", [], "As designed", PAIR_ASPECT))
-            jobs.append(ImageJob("overview", shown, "Findings highlighted", PAIR_ASPECT))
+            dfm_jobs.append(ImageJob("design", [], "As designed", PAIR_ASPECT))
+            dfm_jobs.append(ImageJob("overview", shown, "Findings highlighted", PAIR_ASPECT))
         else:
-            jobs.append(ImageJob("overview", shown, "All findings highlighted", OVERVIEW_ASPECT))
+            dfm_jobs.append(ImageJob("overview", shown, "All findings highlighted", OVERVIEW_ASPECT))
 
-    if data.dfm_available and settings.include_dfm_images and settings.image_mode == "per_rule":
+    if data.dfm_available and need_dfm_camera_jobs and settings.image_mode == "per_rule":
         for section in rule_sections(data, settings):
             eligible = [f for f in section.findings if image_eligible(f, settings)]
             if eligible:
                 n = len(eligible)
                 caption = f"{n} finding{'s' if n != 1 else ''} highlighted"
-                jobs.append(ImageJob(rule_image_key(section.rule), eligible, caption))
-    elif data.dfm_available and settings.include_dfm_images and settings.image_mode == "per_finding":
+                dfm_jobs.append(ImageJob(rule_image_key(section.rule), eligible, caption))
+    elif data.dfm_available and need_dfm_camera_jobs and settings.image_mode == "per_finding":
         picks = default_image_picks(data, settings) if picks is None else picks
         for section in rule_sections(data, settings):
             for f in section.findings:
                 if id(f) in picks and image_eligible(f, settings):
-                    jobs.append(ImageJob(finding_image_key(f), [f], finding_caption(f)))
+                    dfm_jobs.append(ImageJob(finding_image_key(f), [f], finding_caption(f)))
+    if settings.include_dfm_images:
+        jobs.extend(dfm_jobs)
+    if (data.dfm_available and data.fem_result is not None and settings.include_fem_images
+            and settings.fem_follow_dfm_views):
+        for source in dfm_jobs:
+            caption = f"FEM view — DFM camera: {source.caption}"
+            jobs.append(ImageJob(
+                key=f"fem-camera:{source.key}",
+                findings=list(source.findings),
+                caption=caption,
+                aspect=source.aspect,
+            ))
     if settings.include_fem_images:
         jobs.extend(ImageJob(
             image.key, [], image.caption,

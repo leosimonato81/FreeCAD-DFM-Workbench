@@ -78,6 +78,10 @@ class DFMViewProvider:
         """Override how the rest of the model looks (for report images); None restores the default."""
         self._scene.set_style(rest_color, rest_transparency, xray)
 
+    def set_target_visible(self, visible: bool) -> None:
+        """Set visibility of the base CAD object independently of the DFM overlay."""
+        self._set_target_visible(bool(visible))
+
     def current_highlight(self) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         """The face and edge pairs last passed to ``highlight_faces_and_edges_by_index``."""
         faces, edges = self._highlight_pairs

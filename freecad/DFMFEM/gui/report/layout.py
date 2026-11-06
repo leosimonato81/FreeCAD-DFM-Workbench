@@ -87,17 +87,64 @@ _PT_REPORT_TEXT = {
     "Appendix": "Apêndice", "Appendix: all findings": "Apêndice: todos os achados",
     "Appendix: process and material settings": "Apêndice: parâmetros de processo e material",
     "Target and limit": "Alvo e limite", "FEM results": "Resultados FEM",
+    "DFM findings": "Achados DFM", "DFM analysis": "Análise DFM",
+    "FEM views using DFM camera positions": "Vistas FEM com enquadramentos da câmera DFM",
+    "Additional FEM captures": "Capturas FEM adicionais",
     "Result object": "Objeto de resultados", "FEM result": "Resultado FEM",
     "FEM summary": "Resumo FEM", "Quantity": "Grandeza", "Unit": "Unidade",
     "Nodes": "Nós", "Minimum": "Mínimo", "Node": "Nó", "Maximum": "Máximo",
     "FEM viewport images": "Imagens da visualização FEM",
     "FEM view": "Vista FEM",
+    "Plastic Injection Molding": "Moldagem por injeção de plástico",
+    "Additive Manufacturing": "Manufatura aditiva",
+    "Minimum Draft Angle": "Ângulo mínimo de saída",
+    "Minimum Wall Thickness": "Espessura mínima da parede",
+    "Maximum Wall Thickness": "Espessura máxima da parede",
+    "Undercut": "Rebaixo (undercut)",
+    "Sharp Internal Corners": "Cantos internos agudos",
+    "Sharp External Corners": "Cantos externos agudos",
+    "Maximum Overhang Angle": "Ângulo máximo de balanço",
+    "Maximum Bridge Span": "Vão máximo de ponte",
+    "Maximum Bed Contact Area": "Área máxima de contato com a mesa",
+    "Maximum Cusp Height": "Altura máxima do degrau entre camadas",
+    "Maximum Support Material": "Material de suporte estimado",
+    "Minimum inclination of faces relative to the pull direction.":
+        "Inclinação mínima das faces em relação à direção de extração.",
+    "Minimum distance between opposing surfaces.":
+        "Distância mínima entre superfícies opostas.",
+    "Maximum distance between opposing surfaces.":
+        "Distância máxima entre superfícies opostas.",
+    "Geometry hidden behind other features along the pull direction.":
+        "Geometria encoberta por outros elementos na direção de extração.",
+    "Concave intersections of surfaces without a radius.":
+        "Interseções côncavas de superfícies sem raio.",
+    "Convex intersections of surfaces without a radius.":
+        "Interseções convexas de superfícies sem raio.",
+    "Maximum angle of unsupported downward-facing surfaces, from the vertical.":
+        "Ângulo máximo em relação à vertical para superfícies inferiores sem suporte.",
+    "Maximum unsupported horizontal span between two supported regions.":
+        "Vão horizontal máximo sem suporte entre duas regiões apoiadas.",
+    "Maximum area of a single flat face on the build platform.":
+        "Área máxima de uma face plana única em contato com a mesa de impressão.",
+    "Maximum stair-step deviation on sloped surfaces.":
+        "Altura máxima dos degraus visíveis em superfícies inclinadas.",
+    "Estimated percentage of surface area requiring support material.":
+        "Percentual estimado da área que requer material de suporte.",
+    "Aim for": "Alvo", "At most": "Máximo", "At least": "Mínimo",
+    "Between": "Entre", "Reported as a warning": "Classificado como aviso",
+    "Reported as an error": "Classificado como erro",
+    "FEM results are read from the saved FreeCAD result object. No solver was run for this report.":
+        "Os resultados FEM foram lidos do objeto de resultados salvo no FreeCAD. Nenhum solver foi executado para este relatório.",
+    "Only displacement magnitude and von Mises stress are reported. Without material allowables or a failure criterion, this report does not assess safety or failure.":
+        "Este relatório apresenta somente magnitude do deslocamento e tensão de von Mises. Sem limites admissíveis do material ou critério de falha, não avalia segurança nem ruptura.",
     "No displacement or von Mises values are available in this result object.":
         "Este objeto não contém valores de deslocamento ou tensão de von Mises.",
     "Displacement magnitude": "Magnitude do deslocamento",
     "von Mises stress": "Tensão de von Mises",
     "Displacement": "Deslocamento", "Stress": "Tensão",
     "cont.": "cont.", "Page": "Página", "of": "de",
+    "Failed": "Reprovado", "Warning": "Aviso", "Successful": "Aprovado",
+    "Rev": "Rev.", "an error": "erro", "a warning": "aviso",
 }
 
 
@@ -117,8 +164,25 @@ def _report_text(text: str, language: str) -> str:
         return f"Relatório DFM: {text[len('DFM report: '):]}"
     if text.startswith("Run "):
         return f"Execução {text[len('Run '):]}"
-    if text.startswith("Criticality: "):
-        return f"Criticidade: {text[len('Criticality: '):]}"
+    if text.startswith("FEM view — DFM camera: "):
+        suffix = text[len("FEM view — DFM camera: "):]
+        return f"Vista FEM — enquadramento DFM: {_report_text(suffix, language)}"
+    text = text.replace("Criticality:", "Criticidade:")
+    if text.startswith("Failed"):
+        text = text.replace("Failed", "Reprovado", 1)
+    elif text.startswith("Warning"):
+        text = text.replace("Warning", "Aviso", 1)
+    elif text.startswith("Successful"):
+        text = text.replace("Successful", "Aprovado", 1)
+    if text and text[0].isdigit() and " error" in text:
+        text = text.replace(" errors", " erros").replace(" error", " erro")
+        text = text.replace(" warnings", " avisos").replace(" warning", " aviso")
+        return text
+    for source, translated in (("Aim for ", "Alvo: "), ("At most ", "Máximo: "),
+                               ("At least ", "Mínimo: "), ("Between ", "Entre "),
+                               ("Reported as a warning", "Classificado como aviso"),
+                               ("Reported as an error", "Classificado como erro")):
+        text = text.replace(source, translated)
     if text.startswith("Page ") and " of " in text:
         page, total = text[5:].split(" of ", 1)
         return f"Página {page} de {total}"
@@ -130,7 +194,13 @@ def _report_text(text: str, language: str) -> str:
     if text.endswith(" finding highlighted"):
         amount = text[:-len(" finding highlighted")]
         return f"{amount} achado DFM destacado"
-    return _PT_REPORT_TEXT.get(text, text)
+    for source, translated in _PT_REPORT_TEXT.items():
+        if source in text:
+            text = text.replace(source, translated)
+    text = text.replace(" errors", " erros").replace(" error", " erro")
+    text = text.replace(" warnings", " avisos").replace(" warning", " aviso")
+    text = text.replace(" ignored", " ignorados")
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +562,9 @@ class ReportLayout:
 
             def op(c, _i, x=x, top=top, w=w, pill=pill):
                 c.rect(x, top, w, h, fill=pill.color, radius=h / 2)
-                c.text(x + 5, top + (h - asc) / 2 + asc - 0.6, pill.text, self.F_TINY_BOLD, "#ffffff")
+                pill_text = _report_text(pill.text, self.settings.report_language)
+                c.text(x + 5, top + (h - asc) / 2 + asc - 0.6,
+                       pill_text, self.F_TINY_BOLD, "#ffffff")
 
             self.emit(op)
             x += w + 4
@@ -540,7 +612,8 @@ class ReportLayout:
             for col, x, w, cell in zip(columns, xs, widths, row):
                 inner = w - 2 * pad
                 if isinstance(cell, Pill):
-                    cells.append(("pill", x, w, Pill(self.ts.elide(cell.text, self.F_TINY_BOLD, inner - 10), cell.color), col.align))
+                        text = _report_text(cell.text, self.settings.report_language)
+                        cells.append(("pill", x, w, Pill(self.ts.elide(text, self.F_TINY_BOLD, inner - 10), cell.color), col.align))
                 elif isinstance(cell, Dot):
                     dot_text = _report_text(cell.text, self.settings.report_language)
                     cells.append(("dot", x, w, Dot(self.ts.elide(dot_text, spec, inner - 9), cell.color), col.align))
@@ -638,7 +711,12 @@ class ReportLayout:
         sub = [d.process, d.material]
         if d.run is not None:
             sub.append(f"Run {d.run}")
-        sub.append(f"{d.created.day} {d.created:%b %Y, %H:%M}")
+        if s.report_language == "pt_BR":
+            months = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+            created = f"{d.created.day:02d} {months[d.created.month - 1]} {d.created:%Y, %H:%M}"
+        else:
+            created = d.created.strftime("%d %b %Y, %H:%M")
+        sub.append(created)
         self.paragraph(" · ".join(p for p in sub if p), self.F_BODY, MUTED)
         self.space(10)
 
@@ -651,7 +729,8 @@ class ReportLayout:
 
         def banner(c, _i, y=y):
             c.rect(self.left, y, self.cw, bh, fill=verdict_color, radius=3)
-            c.text(self.left + 10, y + (bh - asc) / 2 + asc - 0.8, verdict, self.F_BOLD, "#ffffff")
+            c.text(self.left + 10, y + (bh - asc) / 2 + asc - 0.8,
+                   _report_text(verdict, s.report_language), self.F_BOLD, "#ffffff")
 
         self.emit(banner)
         self.y += bh + 10
@@ -716,7 +795,8 @@ class ReportLayout:
                 def tile(c, _i, x=x, n=n, label=label, color=color):
                     c.rect(x, y, tw, th, stroke=LINE, radius=3, width=0.6)
                     c.text(x + tw / 2, y + 5 + sa, str(n), self.F_STAT, color if n else FAINT, "center")
-                    c.text(x + tw / 2, y + 5 + slh + ta, label, self.F_TINY, MUTED, "center")
+                    c.text(x + tw / 2, y + 5 + slh + ta,
+                           _report_text(label, s.report_language), self.F_TINY, MUTED, "center")
 
                 self.emit(tile)
             self.y += th + 14
@@ -759,8 +839,11 @@ class ReportLayout:
 
     def _rule_section(self, sec: RuleSection, first: bool) -> None:
         d, s, rule = self.data, self.settings, sec.rule
-        label = rule.label
-        if self.t.rule_page_break or first:
+        label = _report_text(rule.label, s.report_language)
+        if first:
+            self.new_page("DFM findings")
+            self.heading("DFM analysis", self.F_H1, after=8)
+        elif self.t.rule_page_break:
             self.new_page(label)  # rules always start after the cover
         else:
             self.space(16)
@@ -1010,6 +1093,12 @@ class ReportLayout:
         self.heading("FEM results", self.F_H1)
         identity = result.object_label or result.object_name or "FEM result"
         self.paragraph(f"Result object: {identity}", self.F_SMALL, MUTED)
+        self.paragraph(
+            "FEM results are read from the saved FreeCAD result object. No solver was run for this report.",
+            self.F_SMALL, MUTED)
+        self.paragraph(
+            "Only displacement magnitude and von Mises stress are reported. Without material allowables or a failure criterion, this report does not assess safety or failure.",
+            self.F_SMALL, MUTED)
 
         if self.settings.include_fem_tables:
             self.space(8)
@@ -1032,30 +1121,45 @@ class ReportLayout:
                     "No displacement or von Mises values are available in this result object.",
                     self.F_SMALL, MUTED)
 
-        images = [job for job in self._jobs.values() if job.key.startswith("fem:")]
+        images = [job for job in self._jobs.values()
+                  if job.key.startswith(("fem:", "fem-camera:"))]
         if self.settings.include_fem_images and images:
             self.space(12)
             self.heading("FEM viewport images", self.F_H2)
-            for job in images:
-                w = min(self.cw, (self.H - 2 * self.m) * 0.72 * job.aspect)
-                h = w / job.aspect
-                cap = (self.H - 2 * self.m) * 0.72
-                if h > cap:
-                    w, h = cap * job.aspect, cap
-                self.need(h + 20, "FEM viewport images")
-                x = self.left + (self.cw - w) / 2
-                self.image_box(x, self.y, w, h, job.key, None)
-                self.y += h + 3
-                self.y += self.caption(x, self.y, w, job.caption)
-                self.space(8)
+            groups = (
+                ([job for job in images if job.key.startswith("fem-camera:")],
+                 "FEM views using DFM camera positions"),
+                ([job for job in images if job.key.startswith("fem:")],
+                 "Additional FEM captures"),
+            )
+            for group, title in groups:
+                if not group:
+                    continue
+                self.heading(title, self.F_H2)
+                for job in group:
+                    self._fem_image(job)
+
+    def _fem_image(self, job) -> None:
+        """Place a FEM viewport image at its native aspect ratio."""
+        w = min(self.cw, (self.H - 2 * self.m) * 0.72 * job.aspect)
+        h = w / job.aspect
+        cap = (self.H - 2 * self.m) * 0.72
+        if h > cap:
+            w, h = cap * job.aspect, cap
+        self.need(h + 20, "FEM viewport images")
+        x = self.left + (self.cw - w) / 2
+        self.image_box(x, self.y, w, h, job.key, None)
+        self.y += h + 3
+        self.y += self.caption(x, self.y, w, job.caption)
+        self.space(8)
 
     # -- Header and footer ---------------------------------------------
 
     def _chrome(self) -> None:
         s, d = self.settings, self.data
         values = d.placeholders(s)
-        header = fill_text(self.t.header_text, values)
-        footer = fill_text(self.t.footer_text, values)
+        header = _report_text(fill_text(self.t.header_text, values), s.report_language)
+        footer = _report_text(fill_text(self.t.footer_text, values), s.report_language)
         company = logos.company_logo(s.company_logo) if s.show_company_logo else None
         marks = [m for m in ((logos.dfm_logo() if s.show_dfm_logo else None),
                              (logos.freecad_logo() if s.show_freecad_logo else None)) if m]

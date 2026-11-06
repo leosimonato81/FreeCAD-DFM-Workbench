@@ -89,6 +89,31 @@ Install directly from the **FreeCAD Addon Manager**.
 After installation, the selector shows **DFM + FEM**. The original **DFM**
 workbench remains installed separately and keeps its existing name and tools.
 
+## DFM + FEM report beta
+
+Start with **Análises** and complete the DFM analysis. The results panel's
+**Análises** tab contains the report presets, CSV export and the optional FEM
+section; there is no separate FEM report command. The DFM result is the source
+for the report's automatic camera positions.
+
+When the FEM section is enabled, choose a saved FEM result object. The combined
+PDF presents the DFM findings and FEM results on separate pages. FEM images can
+reuse each selected automatic DFM camera position while hiding DFM overlays and
+other FEM result objects; the selected FEM color map remains visible. Additional
+FEM views can be captured manually from the current camera. The viewport and
+object visibility are restored after report capture.
+
+The report reads saved displacement magnitude and von Mises stress values; it
+does not run a solver or interpret material failure or safety criteria. Summary
+tables and nodal CSV export are optional. PDF headings, standard DFM rule names
+and descriptions, and FEM fields are available in Brazilian Portuguese and
+English. Free text from project notes, company details and process feedback
+keeps its authored language. The project logo remains configurable in the
+report layout.
+
+This combined report workflow is in beta. It has not yet been validated end to
+end in FreeCAD 1.1.4 with multiple FEM result views and final PDF printing.
+
 <div align="center">
 
 | Version | Support |

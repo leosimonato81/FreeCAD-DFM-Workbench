@@ -1549,8 +1549,8 @@ class DfmAnalysisCommand:
     def GetResources(self):
         return {
             "Pixmap": ":/icons/dfm_analysis.svg",
-            "MenuText": "DFM Analysis",
-            "ToolTip": "Opens the DFM Analysis task panel.",
+            "MenuText": "Análises",
+            "ToolTip": "Inicia as análises DFM do objeto selecionado.",
         }
 
     def Activated(self):
