@@ -137,7 +137,7 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
                         App.Console.PrintWarning("DFM: FEM CSV was not replaced.\n")
                         csv_path = ""
                 if csv_path:
-                    write_nodal_csv(csv_path, data.fem_result)
+                    write_nodal_csv(csv_path, data.fem_result, settings.report_language)
             except Exception as exc:
                 App.Console.PrintError(f"DFM: could not write FEM CSV data: {exc}\n")
                 QtWidgets.QMessageBox.warning(

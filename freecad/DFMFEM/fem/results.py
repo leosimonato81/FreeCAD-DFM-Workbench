@@ -171,11 +171,15 @@ def summarize_result(obj: Any) -> FEMResultSummary:
     )
 
 
-def write_nodal_csv(path: str | Path, summary: FEMResultSummary) -> None:
+def write_nodal_csv(path: str | Path, summary: FEMResultSummary, language: str = "en") -> None:
     """Write displacement and von Mises values, one row per native node."""
     with open(path, "w", newline="", encoding="utf-8-sig") as stream:
         writer = csv.writer(stream)
-        writer.writerow(("Result object", summary.object_label))
-        writer.writerow(("Node", "Displacement magnitude (mm)", "von Mises stress (MPa)"))
+        if language == "pt_BR":
+            writer.writerow(("Objeto de resultados", summary.object_label))
+            writer.writerow(("Nó", "Magnitude do deslocamento (mm)", "Tensão de von Mises (MPa)"))
+        else:
+            writer.writerow(("Result object", summary.object_label))
+            writer.writerow(("Node", "Displacement magnitude (mm)", "von Mises stress (MPa)"))
         for row in summary.node_values:
             writer.writerow((row.node_number, row.displacement_mm, row.von_mises_mpa))

@@ -25,6 +25,7 @@ def _opt(default, persist: bool = True):
 
 # Choices for the options with a fixed set of values: key -> [(value, label)].
 CHOICES: dict[str, list[tuple[str, str]]] = {
+    "report_language": [("pt_BR", "Português (Brasil)"), ("en", "English")],
     "overview_view": [
         ("isometric", "Isometric"),
         ("current", "Current view"),
@@ -75,6 +76,7 @@ class ReportSettings:
     """Everything that decides what goes into a PDF report."""
 
     # Cover page
+    report_language: str = _opt("pt_BR")
     title: str = _opt("DFM report: {model}")
     project: str = _opt("", persist=False)
     prepared_by: str = _opt("")

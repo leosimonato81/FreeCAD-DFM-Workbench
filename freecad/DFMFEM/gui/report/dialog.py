@@ -522,6 +522,9 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _content_tab(self) -> QtWidgets.QWidget:
         f = _Form()
+        f.section("Idioma do relatório")
+        f.row("Idioma do PDF", self._bind_combo(
+            "report_language", [("pt_BR", "Português (Brasil)"), ("en", "English")]))
         f.section("Report content")
         self.cb_include_dfm_images = self._bind_check("include_dfm_images", "DFM images")
         self.cb_include_dfm_images.setEnabled(self.data.dfm_available)

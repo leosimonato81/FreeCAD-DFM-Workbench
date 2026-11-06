@@ -69,6 +69,69 @@ CRITICALITY = {
 
 DIAGRAM_ASPECT = 340 / 165
 
+_PT_REPORT_TEXT = {
+    "Cover": "Capa", "Run": "Execução", "FEM results included": "Resultados FEM incluídos",
+    "Project": "Projeto", "Prepared by": "Responsável", "Revision": "Revisão",
+    "Document": "Documento", "Model": "Modelo", "Process": "Processo",
+    "Material": "Material", "Date": "Data", "As designed": "Como projetado",
+    "Findings highlighted": "DFM: achados destacados",
+    "All findings highlighted": "DFM: todos os achados destacados",
+    "Errors": "Erros", "Warnings": "Avisos", "Rules passed": "Regras aprovadas",
+    "Error": "Erro", "Warning": "Aviso", "Info": "Informação", "Pass": "Aprovado",
+    "High": "Alta", "Medium": "Média", "Low": "Baixa", "Critical": "Crítica",
+    "Ignored": "Ignorados", "Summary by criticality": "Resumo por criticidade",
+    "Criticality": "Criticidade", "Rule": "Regra", "Findings": "Achados",
+    "Result": "Resultado", "Summary": "Resumo", "Notes": "Notas", "Passed": "Aprovado",
+    "Viewport": "Visualização", "Status": "Estado", "Geometry": "Geometria",
+    "Measured": "Medido", "Limit": "Limite", "Passed rules": "Regras aprovadas",
+    "Appendix": "Apêndice", "Appendix: all findings": "Apêndice: todos os achados",
+    "Appendix: process and material settings": "Apêndice: parâmetros de processo e material",
+    "Target and limit": "Alvo e limite", "FEM results": "Resultados FEM",
+    "Result object": "Objeto de resultados", "FEM result": "Resultado FEM",
+    "FEM summary": "Resumo FEM", "Quantity": "Grandeza", "Unit": "Unidade",
+    "Nodes": "Nós", "Minimum": "Mínimo", "Node": "Nó", "Maximum": "Máximo",
+    "FEM viewport images": "Imagens da visualização FEM",
+    "FEM view": "Vista FEM",
+    "No displacement or von Mises values are available in this result object.":
+        "Este objeto não contém valores de deslocamento ou tensão de von Mises.",
+    "Displacement magnitude": "Magnitude do deslocamento",
+    "von Mises stress": "Tensão de von Mises",
+    "Displacement": "Deslocamento", "Stress": "Tensão",
+    "cont.": "cont.", "Page": "Página", "of": "de",
+}
+
+
+def _report_text(text: str, language: str) -> str:
+    """Translate report chrome while leaving user supplied finding text intact."""
+    if language != "pt_BR":
+        return text
+    if text.endswith(" (cont.)"):
+        return _report_text(text[:-8], language) + " (continuação)"
+    if text.startswith("Result object: "):
+        return f"Objeto de resultados: {text[len('Result object: '):]}"
+    if text.startswith("FEM report: "):
+        return f"Relatório FEM: {text[len('FEM report: '):]}"
+    if text.startswith("DFM + FEM report: "):
+        return f"Relatório DFM + FEM: {text[len('DFM + FEM report: '):]}"
+    if text.startswith("DFM report: "):
+        return f"Relatório DFM: {text[len('DFM report: '):]}"
+    if text.startswith("Run "):
+        return f"Execução {text[len('Run '):]}"
+    if text.startswith("Criticality: "):
+        return f"Criticidade: {text[len('Criticality: '):]}"
+    if text.startswith("Page ") and " of " in text:
+        page, total = text[5:].split(" of ", 1)
+        return f"Página {page} de {total}"
+    if text.endswith(" — FEM view"):
+        return text[:-len("FEM view")] + _report_text("FEM view", language)
+    if text.endswith(" findings highlighted"):
+        amount = text[:-len(" findings highlighted")]
+        return f"{amount} achados DFM destacados"
+    if text.endswith(" finding highlighted"):
+        amount = text[:-len(" finding highlighted")]
+        return f"{amount} achado DFM destacado"
+    return _PT_REPORT_TEXT.get(text, text)
+
 
 # ---------------------------------------------------------------------------
 # Text
@@ -379,6 +442,7 @@ class ReportLayout:
         return self.pages[-1]
 
     def new_page(self, label: str) -> None:
+        label = _report_text(label, self.settings.report_language)
         self.pages.append(Page(label))
         self.y = self.top
 
@@ -398,6 +462,7 @@ class ReportLayout:
 
     def paragraph(self, text: str, spec: Font, color: str = INK, indent: float = 0.0,
                   width: Optional[float] = None) -> None:
+        text = _report_text(text, self.settings.report_language)
         width = (width or self.cw) - indent
         lh = self.ts.line_height(spec)
         asc = self.ts.ascent(spec)
@@ -411,7 +476,7 @@ class ReportLayout:
         """A heading, kept on the same page as the first *keep* points that follow."""
         lh = self.ts.line_height(spec)
         self.need(lh + after + max(keep, 3 * lh))
-        self.paragraph(text, spec)
+        self.paragraph(_report_text(text, self.settings.report_language), spec)
         self.space(after)
 
     def pills_width(self, pills: list[Pill]) -> float:
@@ -456,7 +521,8 @@ class ReportLayout:
                 c.rect(self.left, y, self.cw, head_h, fill=TINT)
                 for col, x, w in zip(columns, xs, widths):
                     tx = x + w - pad if col.align == "right" else x + pad
-                    c.text(tx, y + (head_h - head_asc) / 2 + head_asc - 0.8, col.title,
+                    c.text(tx, y + (head_h - head_asc) / 2 + head_asc - 0.8,
+                           _report_text(col.title, self.settings.report_language),
                            self.F_SMALL_BOLD, MUTED, col.align)
 
             self.emit(op)
@@ -476,9 +542,11 @@ class ReportLayout:
                 if isinstance(cell, Pill):
                     cells.append(("pill", x, w, Pill(self.ts.elide(cell.text, self.F_TINY_BOLD, inner - 10), cell.color), col.align))
                 elif isinstance(cell, Dot):
-                    cells.append(("dot", x, w, Dot(self.ts.elide(cell.text, spec, inner - 9), cell.color), col.align))
+                    dot_text = _report_text(cell.text, self.settings.report_language)
+                    cells.append(("dot", x, w, Dot(self.ts.elide(dot_text, spec, inner - 9), cell.color), col.align))
                 else:
-                    cells.append(("text", x, w, self.ts.elide(str(cell), spec, inner), col.align))
+                    text = _report_text(str(cell), self.settings.report_language)
+                    cells.append(("text", x, w, self.ts.elide(text, spec, inner), col.align))
 
             def op(c, _i, y=y, cells=cells):
                 base = y + (row_h - asc) / 2 + asc - 0.8
@@ -518,7 +586,7 @@ class ReportLayout:
         """A one-line caption centred under an image at x, *w* wide."""
         lh = self.ts.line_height(self.F_TINY)
         asc = self.ts.ascent(self.F_TINY)
-        s = self.ts.elide(text, self.F_TINY, w)
+        s = self.ts.elide(_report_text(text, self.settings.report_language), self.F_TINY, w)
         self.emit(lambda c, _i: c.text(x + w / 2, y + asc, s, self.F_TINY, MUTED, "center"))
         return lh
 
@@ -606,7 +674,7 @@ class ReportLayout:
                 val = self.ts.elide(value, self.F_SMALL, col_w - label_w - 12)
                 a = self.ts.ascent(self.F_SMALL)
                 self.emit(lambda c, _i, x=x, y=y, key=key, val=val: (
-                    c.text(x, y + a, key, self.F_SMALL, MUTED),
+                c.text(x, y + a, _report_text(key, s.report_language), self.F_SMALL, MUTED),
                     c.text(x + label_w, y + a, val, self.F_SMALL, INK)))
             self.y += lh
         self.space(10)
@@ -1023,7 +1091,7 @@ class ReportLayout:
                     x += c.logo(x, fy + 4, logo_h, mark) + 6
                 if marks:
                     x += 2
-                page_text = f"Page {n} of {total}"
+                page_text = _report_text(f"Page {n} of {total}", s.report_language)
                 pw = self.ts.width(page_text, self.F_TINY)
                 if footer:
                     c.text(x, text_y, self.ts.elide(footer, self.F_TINY, self.right - pw - 12 - x),

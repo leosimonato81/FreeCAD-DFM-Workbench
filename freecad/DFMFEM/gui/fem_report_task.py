@@ -34,6 +34,20 @@ class FEMReportTaskPanel(QtWidgets.QWidget):
         self.tab.set_results(list(iter_result_objects(doc)))
         self.refresh_summary()
 
+    def getStandardButtons(self):
+        """Make the FreeCAD task panel buttons perform useful actions."""
+        return (QtWidgets.QDialogButtonBox.StandardButton.Ok
+                | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+
+    def accept(self):
+        # FreeCAD's task-panel OK button should open the report preview/export
+        # workflow, just like the explicit button inside the panel.
+        if self.open_report():
+            Gui.Control.closeDialog()
+
+    def reject(self):
+        Gui.Control.closeDialog()
+
     def selected_object(self):
         doc = getattr(App, "ActiveDocument", None)
         name = self.tab.result_name()
@@ -67,8 +81,8 @@ class FEMReportTaskPanel(QtWidgets.QWidget):
             Gui.updateGui()
             view.saveImage(path, width, height, "Current")
             result = self.selected_object()
-            caption = (f"{result.Label} — vista FEM"
-                       if result is not None else "Vista FEM")
+            caption = (f"{result.Label} — FEM view"
+                       if result is not None else "FEM view")
             self.tab.add_capture(QtGui.QImage(path), caption)
         except Exception as exc:
             App.Console.PrintWarning(f"DFM: FEM viewport capture failed: {exc}\n")
@@ -106,12 +120,13 @@ class FEMReportTaskPanel(QtWidgets.QWidget):
             dfm_highlights_in_fem_view=False,
         )
         dialog = ReportDialog(data, settings, parent=Gui.getMainWindow())
-        dialog.exec()
+        exported = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
         self.tab.include_dfm_images.setChecked(dialog.settings.include_dfm_images)
         self.tab.include_dfm_tables.setChecked(dialog.settings.include_dfm_tables)
         self.tab.include_images.setChecked(dialog.settings.include_fem_images)
         self.tab.include_tables.setChecked(dialog.settings.include_fem_tables)
         self.tab.include_csv.setChecked(dialog.settings.include_fem_csv)
+        return exported
 
 
 class FEMReportCommand:
