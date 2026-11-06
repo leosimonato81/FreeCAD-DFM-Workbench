@@ -89,4 +89,4 @@ class DfmAnalysisCommand:
 
 
 if FreeCAD.GuiUp:
-    Gui.addCommand("DFM_ShowNormals", DfmAnalysisCommand())
+    Gui.addCommand("DFMFEM_ShowNormals", DfmAnalysisCommand())

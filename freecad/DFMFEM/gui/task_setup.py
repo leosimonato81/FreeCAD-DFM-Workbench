@@ -856,7 +856,7 @@ class TaskSetup:
 
     def _open_process_library(self, _checked: bool = False) -> None:
         try:
-            Gui.runCommand("DFM_ProcessLibrary")
+            Gui.runCommand("DFMFEM_ProcessLibrary")
         except Exception as e:
             App.Console.PrintError(f"DFM: could not open the Process Library: {e}\n")
 
@@ -1561,4 +1561,4 @@ class DfmAnalysisCommand:
 
 
 if App.GuiUp:
-    Gui.addCommand("DFM_SetupAnalysis", DfmAnalysisCommand())
+    Gui.addCommand("DFMFEM_SetupAnalysis", DfmAnalysisCommand())

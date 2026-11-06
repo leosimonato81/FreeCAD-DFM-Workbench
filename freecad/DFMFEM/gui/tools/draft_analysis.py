@@ -28,4 +28,4 @@ class DraftAnalysisCommand:
 
 
 if App.GuiUp:
-    Gui.addCommand("DFM_DraftAnalysis", DraftAnalysisCommand())
+    Gui.addCommand("DFMFEM_DraftAnalysis", DraftAnalysisCommand())

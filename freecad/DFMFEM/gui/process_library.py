@@ -954,7 +954,7 @@ class EditFeedbackDialog(QtWidgets.QDialog):
 # =============================================================================
 
 
-_PREF_PATH = "User parameter:BaseApp/Preferences/Mod/DFM"
+_PREF_PATH = "User parameter:BaseApp/Preferences/Mod/DFM-FEM"
 _PREF_OFF_COLLAPSED = "ProcessLibraryOffRulesCollapsed"
 _PREF_LAYOUT = "ProcessLibraryRuleLayout"  # "list" or "grid"
 
@@ -2223,4 +2223,4 @@ class ProcessLibraryCommand:
 
 
 if App.GuiUp:
-    Gui.addCommand("DFM_ProcessLibrary", ProcessLibraryCommand())
+    Gui.addCommand("DFMFEM_ProcessLibrary", ProcessLibraryCommand())

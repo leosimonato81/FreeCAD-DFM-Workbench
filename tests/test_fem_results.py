@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "freecad"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from DFM.fem.results import iter_result_objects, summarize_result, write_nodal_csv
+from freecad.DFMFEM.fem.results import iter_result_objects, summarize_result, write_nodal_csv
 
 
 class FEMResultSummaryTests(unittest.TestCase):

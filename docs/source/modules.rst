@@ -1,9 +1,9 @@
-FreeCAD-DFM-Workbench
+DFM + FEM Workbench
 =====================
 
 .. toctree::
    :maxdepth: 4
 
-   freecad/DFM/app
-   freecad/DFM/core
-   freecad/DFM/gui
+   freecad/DFMFEM/app
+   freecad/DFMFEM/core
+   freecad/DFMFEM/gui

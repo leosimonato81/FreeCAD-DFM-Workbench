@@ -7,7 +7,7 @@ from typing import Any, Optional, Callable
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Face
 from OCP.gp import gp_Pnt, gp_Lin, gp_Dir
 from OCP.IntCurvesFace import IntCurvesFace_ShapeIntersector
-from freecad.DFM.core.utils.geometry import EdgeIndex, FaceIndex
+from freecad.DFMFEM.core.utils.geometry import EdgeIndex, FaceIndex
 
 from ...core.base import BaseAnalyzer
 from ...core.models import ProcessRequirement

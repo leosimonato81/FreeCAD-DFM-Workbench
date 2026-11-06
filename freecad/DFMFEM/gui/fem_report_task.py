@@ -129,4 +129,4 @@ class FEMReportCommand:
         return getattr(App, "ActiveDocument", None) is not None
 
 
-Gui.addCommand("DFM_FEMReport", FEMReportCommand())
+Gui.addCommand("DFMFEM_FEMReport", FEMReportCommand())

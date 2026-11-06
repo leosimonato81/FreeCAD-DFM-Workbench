@@ -28,4 +28,4 @@ class ThicknessAnalysisCommand:
 
 
 if App.GuiUp:
-    Gui.addCommand("DFM_ThicknessAnalysis", ThicknessAnalysisCommand())
+    Gui.addCommand("DFMFEM_ThicknessAnalysis", ThicknessAnalysisCommand())

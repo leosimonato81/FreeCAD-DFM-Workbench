@@ -11,9 +11,9 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
 from OCP.TopoDS import TopoDS_Face, TopoDS_Shape
 
-from freecad.DFM.core.analyzers.bridge_span_analyzer import BridgeSpanAnalyzer
-from freecad.DFM.core.models import ProcessRequirement
-from freecad.DFM.core.utils.geometry import (
+from freecad.DFMFEM.core.analyzers.bridge_span_analyzer import BridgeSpanAnalyzer
+from freecad.DFMFEM.core.models import ProcessRequirement
+from freecad.DFMFEM.core.utils.geometry import (
     EdgeIndex,
     FaceIndex,
     get_face_uv_center,

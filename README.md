@@ -1,11 +1,12 @@
 <div align="center">
 
-# DFM Workbench
+# DFM + FEM Workbench
 
 ![License](https://img.shields.io/badge/license-LGPL--2.1-blue)
 
-A FreeCAD workbench that analyses 3D models for Design for Manufacturing (DFM)
-issues, helping designers catch problems before they reach the factory.
+A standalone FreeCAD workbench that combines Design for Manufacturing (DFM)
+analysis with reports from FEM results already saved in the document. It can be
+installed alongside the original DFM workbench.
 
 <img src=".github/images/overview.png" alt="DFM Workbench results panel with findings highlighted on a model" width="100%">
 
@@ -85,10 +86,8 @@ Analyse wall thickness or draft angles of your parts, and create nice graphics.
 
 Install directly from the **FreeCAD Addon Manager**.
 
-After installation, the workbench selector provides **DFM** for the regular
-DFM workflow and **DFM + FEM** for the same tools plus the FEM report command.
-The regular DFM workbench remains available for analysis and viewport
-highlighting without opening the FEM report flow.
+After installation, the selector shows **DFM + FEM**. The original **DFM**
+workbench remains installed separately and keeps its existing name and tools.
 
 <div align="center">
 

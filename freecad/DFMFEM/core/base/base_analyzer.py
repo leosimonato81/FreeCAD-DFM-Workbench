@@ -8,7 +8,7 @@ from OCP.TopTools import TopTools_IndexedMapOfShape
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS, TopoDS_Edge
 from OCP.TopExp import TopExp, TopExp_Explorer
 from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE
-from freecad.DFM.core.utils.geometry import EdgeIndex, FaceIndex
+from freecad.DFMFEM.core.utils.geometry import EdgeIndex, FaceIndex
 from ...core.models import ProcessRequirement
 
 

@@ -6,7 +6,7 @@
 
 import FreeCAD as App  # type: ignore
 
-DFM_PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/DFM"
+DFM_PARAM_PATH = "User parameter:BaseApp/Preferences/Mod/DFM-FEM"
 
 
 def dfm_params():

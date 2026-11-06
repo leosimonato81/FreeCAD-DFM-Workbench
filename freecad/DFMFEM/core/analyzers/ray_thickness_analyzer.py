@@ -12,7 +12,7 @@ from OCP.TopoDS import TopoDS, TopoDS_Shape, TopoDS_Face
 from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
 from OCP.gp import gp_Lin
 from OCP.IntCurvesFace import IntCurvesFace_ShapeIntersector
-from freecad.DFM.core.utils.geometry import EdgeIndex, FaceIndex
+from freecad.DFMFEM.core.utils.geometry import EdgeIndex, FaceIndex
 
 from ...core.base.base_analyzer import BaseAnalyzer
 from ...core.registries import register_analyzer

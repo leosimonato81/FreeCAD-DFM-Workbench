@@ -13,7 +13,7 @@ from ..app.prefs import dfm_params
 from ..app.contour.colormap import COLORMAPS
 from .utils.widgets import ToleranceSpinBox
 
-_PREF_PATH = "Mod/DFM"
+_PREF_PATH = "Mod/DFM-FEM"
 
 
 _W = TypeVar("_W", bound=QtWidgets.QWidget)
