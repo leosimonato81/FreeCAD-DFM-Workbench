@@ -30,7 +30,6 @@ from ..gui.results.toolbar import GroupMode, ResultsToolbar, SortMode
 from ..gui.results.visuals import severity_color
 from ..gui.results.utils import CSVExportConfig, CSVResultExporter
 from ..gui.results.tabs.export import ExportTab
-from ..gui.results.tabs.fem_report import FEMReportTab
 from ..gui.results.header import ResultsHeader
 from ..gui.results.tabs.history import HistoryTab
 
@@ -115,8 +114,6 @@ class TaskResults(QtCore.QObject):
         self.on_markers_toggled: Callable[[bool], None] | None = None
         self.on_annotations_toggled: Callable[[bool], None] | None = None
         self.on_fem_capture: Callable[[], None] | None = None
-        self.on_fem_export: Callable[[], None] | None = None
-        self.on_fem_configure: Callable[[], None] | None = None
         self.form.tvResults.doubleClicked.connect(self._handle_double_click)
 
 
@@ -146,17 +143,13 @@ class TaskResults(QtCore.QObject):
         # History and Export tabs (replace the .ui placeholders).
         self.history_tab = HistoryTab()
         self.export_tab = ExportTab()
-        self.fem_report_tab = FEMReportTab()
+        self.fem_report_tab = self.export_tab.fem_report_tab
         self._install_tab_page(self.form.tabHistory, self.history_tab)
         self._install_tab_page(self.form.tab, self.export_tab)
-        self.form.tabWidget.addTab(self.fem_report_tab, "FEM report")
+        self.form.tabWidget.setTabText(self.form.tabWidget.indexOf(self.form.tab), "Análises")
         self.export_tab.export_requested.connect(self._handle_export_btn)
-        self.fem_report_tab.capture_requested.connect(
+        self.export_tab.fem_capture_requested.connect(
             lambda: self.on_fem_capture and self.on_fem_capture())
-        self.fem_report_tab.export_requested.connect(
-            lambda: self.on_fem_export and self.on_fem_export())
-        self.fem_report_tab.configure_requested.connect(
-            lambda: self.on_fem_configure and self.on_fem_configure())
         self._toolbar.settings_changed.connect(self._on_toolbar_changed)
         self._toolbar.markers_toggled.connect(self._on_markers_toggled)
         self._toolbar.annotations_toggled.connect(

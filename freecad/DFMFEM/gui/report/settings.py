@@ -93,6 +93,7 @@ class ReportSettings:
     include_fem_tables: bool = _opt(True)
     include_fem_csv: bool = _opt(False)
     dfm_highlights_in_fem_view: bool = _opt(False)
+    fem_follow_dfm_views: bool = _opt(True)
 
     # Findings
     include_errors: bool = _opt(True)

@@ -194,17 +194,22 @@ class ViewportCapture:
 
     def __init__(self, bridge, settings: ReportSettings,
                  hide_annotations: Optional[Callable[[], None]] = None,
-                 show_annotations: Optional[Callable[[], None]] = None):
+                 show_annotations: Optional[Callable[[], None]] = None,
+                 fem_result_object=None):
         self.bridge = bridge
         self.settings = settings
         self._hide = hide_annotations
         self._show = show_annotations
+        self._fem_result_object = fem_result_object
+        self._fem_objects: list = []
+        self._fem_visibility: dict[int, tuple[object, bool]] = {}
         self._view = None
         self._camera: Optional[str] = None
         self._camera_fields: dict = {}
         self._start_q = None
         self._navi_cube = False
         self._highlight = ([], [])
+        self._target_visibility: Optional[bool] = None
         self._tmp = tempfile.mkdtemp(prefix="dfm_report_")
 
     @property
@@ -236,16 +241,30 @@ class ViewportCapture:
                 self._start_q = None
         self._navi_cube = self._set_navi_cube(False)
         self._highlight = self.bridge.current_highlight()
+        try:
+            self._target_visibility = bool(self.bridge.target_object.ViewObject.Visibility)
+        except Exception:
+            self._target_visibility = None
+        self._remember_fem_visibility()
         self.bridge.remove_finding_overlay()
         if self.settings.hide_markers and self._hide:
             self._hide()
 
     def end(self) -> None:
         try:
-            faces, edges = self._highlight
-            self.bridge.set_display_style()  # back to the panel's own look
-            self.bridge.highlight_faces_and_edges_by_index(faces, edges)
-            self._restore_camera()
+            try:
+                faces, edges = self._highlight
+                self.bridge.set_display_style()  # back to the panel's own look
+                self.bridge.highlight_faces_and_edges_by_index(faces, edges)
+            finally:
+                try:
+                    self._restore_fem_visibility()
+                finally:
+                    try:
+                        if self._target_visibility is not None:
+                            self.bridge.set_target_visible(self._target_visibility)
+                    finally:
+                        self._restore_camera()
         finally:
             if self._navi_cube:
                 self._set_navi_cube(True)
@@ -263,9 +282,20 @@ class ViewportCapture:
         # Images showing several findings make the part see-through, so
         # findings on the far side still show. Close-ups face their finding.
         see_through = 0 if job.key.startswith("finding:") else self.settings.see_through
-        self._highlight_job(job.findings, see_through)
+        fem_clean_view = job.key.startswith("fem-camera:")
+        self._set_fem_result_visibility(fem_clean_view)
+        # The FEM result object keeps its own contour map. Remove the DFM
+        # duplicate-shape overlay before rendering a paired FEM image, while
+        # reusing the exact same findings and camera framing as its DFM image.
+        self._highlight_job([] if fem_clean_view else job.findings,
+                            0 if fem_clean_view else see_through)
+        if fem_clean_view:
+            # The FEM mesh is the subject of this image. Hide the coincident
+            # base CAD shape to prevent its neutral faces from covering the map.
+            self.bridge.set_target_visible(False)
 
-        overview = job.key in ("overview", "design")
+        source_key = job.key.removeprefix("fem-camera:")
+        overview = source_key in ("overview", "design")
         name = self.settings.overview_view if overview else self.settings.view_direction
         zoom = self.settings.framing == "zoom" and job.findings and not overview
         self._place_camera(name, job.findings, job.findings if zoom else [], width / max(height, 1))
@@ -285,6 +315,37 @@ class ViewportCapture:
             except OSError:
                 pass
         return None if image.isNull() else image
+
+    def _remember_fem_visibility(self) -> None:
+        """Remember FEM result visibility before producing separated report views."""
+        from ...fem.results import is_result_object
+
+        doc = getattr(App, "ActiveDocument", None)
+        try:
+            self._fem_objects = [obj for obj in doc.Objects if is_result_object(obj)] if doc else []
+        except Exception:
+            self._fem_objects = []
+        self._fem_visibility.clear()
+        for obj in self._fem_objects:
+            try:
+                self._fem_visibility[id(obj)] = (obj, bool(obj.ViewObject.Visibility))
+            except Exception:
+                continue
+
+    def _set_fem_result_visibility(self, show_selected: bool) -> None:
+        """Hide result maps in DFM images; show only the chosen FEM result in FEM views."""
+        for obj in self._fem_objects:
+            try:
+                obj.ViewObject.Visibility = bool(show_selected and obj is self._fem_result_object)
+            except Exception:
+                continue
+
+    def _restore_fem_visibility(self) -> None:
+        for obj, visible in self._fem_visibility.values():
+            try:
+                obj.ViewObject.Visibility = visible
+            except Exception:
+                continue
 
     # -- Highlight -------------------------------------------------------
 

@@ -24,6 +24,7 @@ from ....app.prefs import dfm_params
 from ...rule_cards import DOWNLOAD_SVG, apply_svg_icon
 from ..utils import CSVExportConfig, CSVResultExporter
 from .common import C_ACCENT, LINE, TINT, MutedLabel, muted_label, section_header
+from .fem_report import FEMReportTab
 
 # Columns every CSV export has: Status, Rule, Face, Value, Comparison, Limit.
 _BASE_COLUMNS = 6
@@ -176,6 +177,8 @@ class ExportTab(QtWidgets.QWidget):
     pdf_configure_requested = QtCore.Signal()
     pdf_preset_changed = QtCore.Signal(str)  # the image_mode value
     preview_needed = QtCore.Signal()
+    report_content_changed = QtCore.Signal()
+    fem_capture_requested = QtCore.Signal()
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
@@ -202,6 +205,19 @@ class ExportTab(QtWidgets.QWidget):
 
         self._note = _NoteBox()
         root.addWidget(self._note)
+
+        self.fem_group = QtWidgets.QGroupBox("Incluir resultados FEM (opcional)")
+        self.fem_group.setCheckable(True)
+        self.fem_group.setChecked(False)
+        fem_box = QtWidgets.QVBoxLayout(self.fem_group)
+        fem_box.setContentsMargins(8, 8, 8, 8)
+        self.fem_report_tab = FEMReportTab(embedded=True)
+        self.fem_report_tab.capture_requested.connect(lambda: self.fem_capture_requested.emit())
+        self.fem_report_tab.results_available.connect(self._set_fem_available)
+        self.fem_report_tab.selection_changed.connect(lambda: self.report_content_changed.emit())
+        self.fem_group.toggled.connect(lambda _on: self.report_content_changed.emit())
+        fem_box.addWidget(self.fem_report_tab)
+        root.addWidget(self.fem_group)
 
         actions = QtWidgets.QHBoxLayout()
         actions.setContentsMargins(0, 4, 0, 0)
@@ -269,6 +285,16 @@ class ExportTab(QtWidgets.QWidget):
     def config(self) -> CSVExportConfig:
         """The CSV options, as last chosen in the CSV dialog."""
         return csv_config()
+
+    @property
+    def include_fem(self) -> bool:
+        return self.fem_group.isChecked() and self.fem_group.isEnabled()
+
+    def _set_fem_available(self, available: bool) -> None:
+        self.fem_group.setEnabled(bool(available))
+        if not available:
+            self.fem_group.setChecked(False)
+        self.report_content_changed.emit()
 
     # ------------------------------------------------------------------
 
