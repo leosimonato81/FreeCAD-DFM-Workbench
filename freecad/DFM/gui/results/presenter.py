@@ -3,6 +3,8 @@
 # SPDX-FileNotice: Part of the DFM addon.
 
 import csv
+import os
+import tempfile
 
 import FreeCAD as App  # type: ignore
 import FreeCADGui as Gui  # type: ignore
@@ -50,6 +52,7 @@ class TaskResultsPresenter:
         self.bridge = bridge
         self.runner = runner
         self.run_settings = run_settings or {}
+        self._active_finding: CheckResult | None = None
 
         self.view.on_row_selected = self.handle_selection
         self.view.on_row_double_clicked = self.handle_zoom
@@ -84,6 +87,13 @@ class TaskResultsPresenter:
 
         # Read default marker visibility from preferences.
         self._markers_active = dfm_params().GetBool("ResultsShowMarkersDefault", False)
+
+        self.view.on_fem_capture = self.handle_fem_capture
+        self.view.on_fem_export = self.handle_fem_report
+        self.view.on_fem_configure = self.handle_fem_report
+        self.view.fem_report_tab.set_dfm_available(True)
+        self.view.fem_report_tab.selection_changed.connect(self._fem_selection_changed)
+        self._refresh_fem_results()
 
         # Material switching cache: material_name -> list[CheckResult]
         self._material_cache: dict[str, list[CheckResult]] = {}
@@ -182,6 +192,8 @@ class TaskResultsPresenter:
     def handle_selection(self, data: CheckResult | list[CheckResult]):
         if self._syncing:
             return
+
+        self._active_finding = data if isinstance(data, CheckResult) else None
 
         Gui.Selection.clearSelection()
         if isinstance(data, list) and len(data) == 0:
@@ -291,13 +303,13 @@ class TaskResultsPresenter:
 
     # ── PDF report ──────────────────────────────────────
 
-    def _report_data(self):
+    def _report_data(self, include_fem: bool = False):
         from ...gui.report.data import ReportData
 
         process = self.model.process
         verdict, color = self.model.get_verdict()
         doc = getattr(App, "ActiveDocument", None)
-        return ReportData(
+        data = ReportData(
             document=(doc.Label if doc is not None else "") or self.doc_name,
             model=self.bridge.target_object.Label,
             process=process.name,
@@ -313,11 +325,150 @@ class TaskResultsPresenter:
             feedback=process.rule_feedback.get,
             derived_hint=lambda rule: process.archetype.derived_rules.get(rule, ""),
         )
+        if include_fem:
+            tab = self.view.fem_report_tab
+            result_obj = self._selected_fem_object()
+            if result_obj is not None:
+                from ...fem.results import summarize_result
 
-    def _report_settings(self):
+                data.fem_result = summarize_result(result_obj)
+            data.fem_images = tab.selected_images()
+        return data
+
+    def _report_settings(self, include_fem: bool = False):
         from ...gui.report.settings import ReportSettings
 
-        return ReportSettings.load().copy(**self._report_fields)
+        settings = ReportSettings.load().copy(**self._report_fields)
+        if not include_fem:
+            return settings
+        tab = self.view.fem_report_tab
+        return settings.copy(
+            include_dfm_images=tab.include_dfm_images.isChecked(),
+            include_dfm_tables=tab.include_dfm_tables.isChecked(),
+            include_fem_images=tab.include_images.isChecked(),
+            include_fem_tables=tab.include_tables.isChecked(),
+            include_fem_csv=tab.include_csv.isChecked(),
+            dfm_highlights_in_fem_view=tab.include_dfm_highlights.isChecked(),
+        )
+
+    def _refresh_fem_results(self) -> None:
+        from ...fem.results import iter_result_objects
+
+        doc = getattr(App, "ActiveDocument", None)
+        self.view.fem_report_tab.set_results(list(iter_result_objects(doc)))
+
+    def _selected_fem_object(self):
+        doc = getattr(App, "ActiveDocument", None)
+        name = self.view.fem_report_tab.result_name()
+        try:
+            return doc.getObject(name) if doc is not None and name else None
+        except Exception:
+            return None
+
+    def _fem_selection_changed(self) -> None:
+        obj = self._selected_fem_object()
+        if obj is None:
+            self.view.fem_report_tab.set_summary(None)
+            return
+        try:
+            from ...fem.results import summarize_result
+
+            self.view.fem_report_tab.set_summary(summarize_result(obj))
+        except Exception as exc:
+            self.view.fem_report_tab.set_summary(None)
+            App.Console.PrintWarning(f"DFM: could not read FEM result values: {exc}\n")
+
+    def handle_fem_capture(self) -> None:
+        from ...gui.utils.view import get_active_view
+
+        view = get_active_view()
+        if view is None:
+            QtWidgets.QMessageBox.warning(self.view.form, "FEM viewport", "No active 3D view is available.")
+            return
+        try:
+            size = view.getSize()
+            width, height = int(size[0]), int(size[1])
+            if width <= 0 or height <= 0:
+                raise RuntimeError("The active viewport has no drawable size.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self.view.form, "FEM viewport", str(exc))
+            return
+
+        tab = self.view.fem_report_tab
+        old_highlight = self.bridge.current_highlight()
+        hide_dfm = not tab.include_dfm_highlights.isChecked()
+        markers_were_active = self._markers_active
+        temp_path = None
+        image = None
+        try:
+            if hide_dfm:
+                self.bridge.remove_finding_overlay()
+                if markers_were_active:
+                    self._marker_controller.deactivate()
+                self.bridge.highlight_faces_and_edges_by_index([], [])
+            fd, temp_path = tempfile.mkstemp(prefix="dfm_fem_view_", suffix=".png")
+            os.close(fd)
+            Gui.updateGui()
+            view.saveImage(temp_path, width, height, "Current")
+            image = QtGui.QImage(temp_path)
+        except Exception as exc:
+            App.Console.PrintWarning(f"DFM: FEM viewport capture failed: {exc}\n")
+            QtWidgets.QMessageBox.warning(self.view.form, "FEM viewport capture", str(exc))
+        finally:
+            try:
+                if hide_dfm:
+                    faces, edges = old_highlight
+                    self.bridge.highlight_faces_and_edges_by_index(faces, edges)
+                    if markers_were_active:
+                        self._marker_controller.activate(
+                            self.model.results,
+                            show_errors=self.view.show_errors,
+                            show_warnings=self.view.show_warnings,
+                            show_ignored=self.view.show_ignored,
+                        )
+                        if self._active_finding is not None:
+                            self._marker_controller.highlight_finding(self._active_finding)
+                if hide_dfm and self._active_finding is not None:
+                    self.bridge.show_finding_overlay(
+                        self._active_finding, severity_color(self._active_finding.severity))
+            finally:
+                if temp_path:
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        pass
+        if image is not None and not image.isNull():
+            result_label = self._selected_fem_object()
+            caption = (f"{result_label.Label} — vista FEM"
+                       if result_label is not None else "Vista FEM")
+            tab.add_capture(image, caption)
+
+    def handle_fem_report(self) -> None:
+        from ...gui.report.dialog import ReportDialog
+
+        data = self._report_data(include_fem=True)
+        if data.fem_result is None:
+            QtWidgets.QMessageBox.information(
+                self.view.form, "FEM report", "No FEM result object is selected in the document.")
+            return
+        settings = self._report_settings(include_fem=True)
+        if settings.title == "DFM report: {model}":
+            settings.title = "DFM + FEM report: {model}"
+        if settings.file_name == "{document}_{material}_DFM_{date}":
+            settings.file_name = "{document}_DFM_FEM_{date}"
+        dialog = ReportDialog(
+            data, settings, self._report_capture,
+            parent=Gui.getMainWindow(),
+        )
+        dialog.exec()
+        self._remember_report_fields(dialog.settings)
+        tab = self.view.fem_report_tab
+        tab.include_dfm_images.setChecked(dialog.settings.include_dfm_images)
+        tab.include_dfm_tables.setChecked(dialog.settings.include_dfm_tables)
+        tab.include_images.setChecked(dialog.settings.include_fem_images)
+        tab.include_tables.setChecked(dialog.settings.include_fem_tables)
+        tab.include_csv.setChecked(dialog.settings.include_fem_csv)
+        self._refresh_report_preview(force=True)
 
     def _report_capture(self, settings):
         from ...gui.report.capture import ViewportCapture

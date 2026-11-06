@@ -58,8 +58,9 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
         jobs_to_capture = []
     else:
         jobs_to_capture = jobs
+    capture_jobs = [job for job in jobs_to_capture if job.image is None]
 
-    steps = len(jobs_to_capture) + len(pages)
+    steps = len(capture_jobs) + len(pages)
     progress = QtWidgets.QProgressDialog("Preparing the report…", "Cancel", 0, steps, parent)
     progress.setWindowTitle("Export PDF report")
     progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
@@ -71,14 +72,17 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
     QtWidgets.QApplication.processEvents()
 
     images: dict[str, QtGui.QImage] = {}
+    for job in jobs:
+        if job.image is not None:
+            images[job.key] = job.image
     try:
-        if jobs_to_capture:
+        if capture_jobs:
             capture.begin()
             try:
-                for i, job in enumerate(jobs_to_capture):
+                for i, job in enumerate(capture_jobs):
                     if progress.wasCanceled():
                         return False
-                    progress.setLabelText(f"Capturing viewport image {i + 1} of {len(jobs_to_capture)}…")
+                    progress.setLabelText(f"Capturing viewport image {i + 1} of {len(capture_jobs)}…")
                     progress.setValue(i)
                     QtWidgets.QApplication.processEvents()
                     w, h = image_size(job, settings, layout)
@@ -95,7 +99,7 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
             return False
 
         progress.setLabelText("Writing the PDF…")
-        offset = len(jobs_to_capture)
+        offset = len(capture_jobs)
 
         def step(n: int) -> bool:
             progress.setValue(offset + n)
@@ -116,6 +120,29 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
                     f"The report could not be written to\n{path}\n\n"
                     "Check that the folder exists and the file isn't open in another program.")
             return False
+        if settings.include_fem_csv and data.fem_result is not None:
+            try:
+                from ...fem.results import write_nodal_csv
+
+                csv_path = os.path.splitext(path)[0] + "_FEM.csv"
+                if os.path.exists(csv_path):
+                    answer = QtWidgets.QMessageBox.question(
+                        parent, "Replace FEM CSV?",
+                        f"The file already exists:\n{csv_path}\n\nReplace it?",
+                        QtWidgets.QMessageBox.StandardButton.Yes
+                        | QtWidgets.QMessageBox.StandardButton.No,
+                        QtWidgets.QMessageBox.StandardButton.No,
+                    )
+                    if answer == QtWidgets.QMessageBox.StandardButton.No:
+                        App.Console.PrintWarning("DFM: FEM CSV was not replaced.\n")
+                        csv_path = ""
+                if csv_path:
+                    write_nodal_csv(csv_path, data.fem_result)
+            except Exception as exc:
+                App.Console.PrintError(f"DFM: could not write FEM CSV data: {exc}\n")
+                QtWidgets.QMessageBox.warning(
+                    parent, "FEM CSV export",
+                    f"The PDF was saved, but the FEM CSV could not be written:\n{exc}")
     finally:
         progress.close()
 

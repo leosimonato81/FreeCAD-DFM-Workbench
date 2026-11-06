@@ -85,6 +85,12 @@ class ReportSettings:
     overview_view: str = _opt("isometric")
     design_image: bool = _opt(True)  # the model as designed, beside the overview
     summary_table: bool = _opt(True)
+    include_dfm_images: bool = _opt(True)
+    include_fem_images: bool = _opt(True)
+    include_dfm_tables: bool = _opt(True)
+    include_fem_tables: bool = _opt(True)
+    include_fem_csv: bool = _opt(False)
+    dfm_highlights_in_fem_view: bool = _opt(False)
 
     # Findings
     include_errors: bool = _opt(True)

@@ -304,6 +304,10 @@ class ReportDialog(QtWidgets.QDialog):
         self._ts: Optional[Typesetter] = None
         self._single_index = 0
         self._syncing = False
+        self._images: dict[str, QtGui.QImage] = {
+            image.key: image.image for image in getattr(data, "fem_images", [])
+            if image.image is not None and image.include
+        }
 
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
@@ -332,7 +336,8 @@ class ReportDialog(QtWidgets.QDialog):
         left_box.setContentsMargins(8, 8, 4, 6)
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self._scroll(self._content_tab()), "Content")
-        self.tabs.addTab(self._scroll(self._images_tab()), "Viewport images")
+        if self.data.dfm_available:
+            self.tabs.addTab(self._scroll(self._images_tab()), "DFM images")
         self.tabs.addTab(self._scroll(self._layout_tab()), "Layout")
         left_box.addWidget(self.tabs, 1)
         links = QtWidgets.QHBoxLayout()
@@ -517,6 +522,23 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _content_tab(self) -> QtWidgets.QWidget:
         f = _Form()
+        f.section("Report content")
+        self.cb_include_dfm_images = self._bind_check("include_dfm_images", "DFM images")
+        self.cb_include_dfm_images.setEnabled(self.data.dfm_available)
+        f.add(self.cb_include_dfm_images)
+        f.add(self._bind_check("include_fem_images", "FEM viewport images"))
+        self.cb_include_dfm_tables = self._bind_check("include_dfm_tables", "DFM tables")
+        self.cb_include_dfm_tables.setEnabled(self.data.dfm_available)
+        f.add(self.cb_include_dfm_tables)
+        f.add(self._bind_check("include_fem_tables", "FEM result summary table"))
+        csv_check = self._bind_check("include_fem_csv", "Also export full FEM values as CSV")
+        csv_check.setEnabled(self.data.fem_result is not None)
+        f.add(csv_check)
+        if self.data.fem_result is not None:
+            count = len(self.data.fem_result.node_values)
+            label = f"{self.data.fem_result.object_label}: {count:,} nodal values for displacement and von Mises."
+            f.add(muted_label(label, small=True))
+
         f.section("Cover page")
         self.ed_title = self._bind_line("title", "DFM report: {model}")
         self.ed_title.setToolTip(PLACEHOLDER_HELP)
@@ -529,21 +551,22 @@ class ReportDialog(QtWidgets.QDialog):
         rev_row.addWidget(rev)
         rev_row.addStretch(1)
         f.row("Revision", rev_row)
-        f.add(self._bind_check("overview_image", "Overview image with all findings highlighted"))
-        self.cb_overview_view = self._bind_combo("overview_view")
-        view_row = QtWidgets.QWidget()
-        vr = QtWidgets.QHBoxLayout(view_row)
-        vr.setContentsMargins(24, 0, 0, 0)
-        vr.addWidget(QtWidgets.QLabel("View"))
-        vr.addStretch(1)
-        vr.addWidget(self.cb_overview_view)
-        self.cb_overview_view.setMinimumWidth(180)
-        self._overview_row = f.add(view_row)
-        design = self._bind_check("design_image", "Also show the model as designed, next to it")
-        design.setToolTip("A second image with the model's own colors and transparency,\n"
-                          "so readers can see what the part is before the findings")
-        self._design_row = f.add(_indent(design))
-        f.add(self._bind_check("summary_table", "Summary table by criticality"))
+        if self.data.dfm_available:
+            f.add(self._bind_check("overview_image", "Overview image with all findings highlighted"))
+            self.cb_overview_view = self._bind_combo("overview_view")
+            view_row = QtWidgets.QWidget()
+            vr = QtWidgets.QHBoxLayout(view_row)
+            vr.setContentsMargins(24, 0, 0, 0)
+            vr.addWidget(QtWidgets.QLabel("View"))
+            vr.addStretch(1)
+            vr.addWidget(self.cb_overview_view)
+            self.cb_overview_view.setMinimumWidth(180)
+            self._overview_row = f.add(view_row)
+            design = self._bind_check("design_image", "Also show the model as designed, next to it")
+            design.setToolTip("A second image with the model's own colors and transparency,\n"
+                              "so readers can see what the part is before the findings")
+            self._design_row = f.add(_indent(design))
+            f.add(self._bind_check("summary_table", "Summary table by criticality"))
         f.add(self._bind_check("show_notes", "Notes"))
         self.ed_notes = QtWidgets.QPlainTextEdit()
         self.ed_notes.setPlaceholderText("Shown on the cover page")
@@ -552,43 +575,44 @@ class ReportDialog(QtWidgets.QDialog):
         self._register("settings", "notes", lambda: self._quiet(self.ed_notes.setPlainText, self.settings.notes))
         self._notes_row = f.add(_indent(self.ed_notes))
 
-        f.section("Findings")
-        chips = _FlowRow()
-        self.chip_errors = self._chip("include_errors", "Errors", ":/icons/dfm_error.svg")
-        self.chip_warnings = self._chip("include_warnings", "Warnings", ":/icons/dfm_warning.svg")
-        self.chip_passed = self._chip("include_passed", "Passed rules", ":/icons/dfm_success.svg")
-        self.chip_ignored = self._chip("include_ignored", "Ignored", None)
-        for chip in (self.chip_errors, self.chip_warnings, self.chip_passed, self.chip_ignored):
-            chips.add(chip)
-        f.add(chips)
-        counts = self.data.counts()
-        self.chip_errors.setText(f"Errors  {counts['errors']}")
-        self.chip_warnings.setText(f"Warnings  {counts['warnings']}")
-        self.chip_passed.setText(f"Passed rules  {counts['passed']}")
-        self.chip_ignored.setText(f"Ignored  {counts['ignored']}")
-        f.row("Group by", self._bind_combo("group_by"))
-        diag = self._bind_check("rule_diagrams", "Rule diagrams")
-        diag.setToolTip("The bad / good diagram that explains each rule, once per rule")
-        f.add(diag)
-        f.add(self._bind_check("feedback_messages", "Feedback messages"))
-        f.add(self._bind_check("target_and_limit", "Target and limit for each rule"))
-        f.add(self._bind_check("settings_appendix", "Process and material settings appendix"))
+        if self.data.dfm_available:
+            f.section("Findings")
+            chips = _FlowRow()
+            self.chip_errors = self._chip("include_errors", "Errors", ":/icons/dfm_error.svg")
+            self.chip_warnings = self._chip("include_warnings", "Warnings", ":/icons/dfm_warning.svg")
+            self.chip_passed = self._chip("include_passed", "Passed rules", ":/icons/dfm_success.svg")
+            self.chip_ignored = self._chip("include_ignored", "Ignored", None)
+            for chip in (self.chip_errors, self.chip_warnings, self.chip_passed, self.chip_ignored):
+                chips.add(chip)
+            f.add(chips)
+            counts = self.data.counts()
+            self.chip_errors.setText(f"Errors  {counts['errors']}")
+            self.chip_warnings.setText(f"Warnings  {counts['warnings']}")
+            self.chip_passed.setText(f"Passed rules  {counts['passed']}")
+            self.chip_ignored.setText(f"Ignored  {counts['ignored']}")
+            f.row("Group by", self._bind_combo("group_by"))
+            diag = self._bind_check("rule_diagrams", "Rule diagrams")
+            diag.setToolTip("The bad / good diagram that explains each rule, once per rule")
+            f.add(diag)
+            f.add(self._bind_check("feedback_messages", "Feedback messages"))
+            f.add(self._bind_check("target_and_limit", "Target and limit for each rule"))
+            f.add(self._bind_check("settings_appendix", "Process and material settings appendix"))
 
-        f.section("Large results")
-        at_most = QtWidgets.QHBoxLayout()
-        self.sp_list = self._bind_spin("list_at_most", 0, 1000)
-        self.sp_list.setToolTip("0 lists no findings in the rule sections")
-        at_most.addWidget(self.sp_list)
-        at_most.addWidget(QtWidgets.QLabel("findings per rule"))
-        at_most.addStretch(1)
-        f.row("List at most", at_most)
-        note = muted_label("The rest are summarized as “and 62 more”, with the full list in an appendix.",
-                           small=True)
-        note.setWordWrap(True)
-        f.add(note)
-        appendix = self._bind_check("findings_appendix", "Full findings table as appendix")
-        appendix.setToolTip("Added when a rule has more findings than are listed in its section")
-        f.add(appendix)
+            f.section("Large results")
+            at_most = QtWidgets.QHBoxLayout()
+            self.sp_list = self._bind_spin("list_at_most", 0, 1000)
+            self.sp_list.setToolTip("0 lists no findings in the rule sections")
+            at_most.addWidget(self.sp_list)
+            at_most.addWidget(QtWidgets.QLabel("findings per rule"))
+            at_most.addStretch(1)
+            f.row("List at most", at_most)
+            note = muted_label("The rest are summarized as “and 62 more”, with the full list in an appendix.",
+                               small=True)
+            note.setWordWrap(True)
+            f.add(note)
+            appendix = self._bind_check("findings_appendix", "Full findings table as appendix")
+            appendix.setToolTip("Added when a rule has more findings than are listed in its section")
+            f.add(appendix)
         f.finish()
         return f
 
@@ -777,21 +801,23 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _refresh_dependents(self) -> None:
         s = self.settings
-        self._overview_row.setEnabled(s.overview_image)
-        self._design_row.setEnabled(s.overview_image)
+        if self.data.dfm_available:
+            self._overview_row.setEnabled(s.overview_image)
+            self._design_row.setEnabled(s.overview_image)
         self._notes_row.setVisible(s.show_notes)
-        per_finding = s.image_mode == "per_finding"
-        images = s.image_mode != "none"
-        for w in (self.cb_image_findings, self.cb_framing, self.cb_direction):
-            w.setEnabled(images)
-        self.sp_images.setEnabled(per_finding and not self.cb_choose.isChecked())
-        self._at_most_label.setEnabled(self.sp_images.isEnabled())
-        self.cb_choose.setVisible(per_finding)
-        self.picker.setVisible(per_finding)
-        self._picker_tip.setVisible(per_finding)
-        self.picker.setEnabled(self.cb_choose.isChecked())
-        if self.picker.topLevelItemCount() == 0:
-            self._fill_picker()
+        if self.data.dfm_available:
+            per_finding = s.image_mode == "per_finding"
+            images = s.image_mode != "none"
+            for w in (self.cb_image_findings, self.cb_framing, self.cb_direction):
+                w.setEnabled(images)
+            self.sp_images.setEnabled(per_finding and not self.cb_choose.isChecked())
+            self._at_most_label.setEnabled(self.sp_images.isEnabled())
+            self.cb_choose.setVisible(per_finding)
+            self.picker.setVisible(per_finding)
+            self._picker_tip.setVisible(per_finding)
+            self.picker.setEnabled(self.cb_choose.isChecked())
+            if self.picker.topLevelItemCount() == 0:
+                self._fill_picker()
         path = os.path.expanduser(s.company_logo)
         if s.company_logo and logos.company_logo(s.company_logo) is None:
             self._logo_note.setText("This file can't be read as an image." if os.path.exists(path)
@@ -976,18 +1002,26 @@ class ReportDialog(QtWidgets.QDialog):
         self._pages = layout.build()
         self._ts = layout.ts
         jobs = image_jobs(self.data, self.settings, picks)
+        preloaded = sum(1 for job in jobs if job.image is not None)
+        to_capture = len(jobs) - preloaded
         n = len(self._pages)
         self._page_count.setText(f"{n} page{'s' if n != 1 else ''}")
 
         size = format_bytes(estimate_bytes(self.settings, layout, jobs, n))
-        if jobs:
-            seconds = "a few seconds" if len(jobs) <= 12 else (
-                "under a minute" if len(jobs) <= 60 else "a few minutes")
-            images = f"Capturing {len(jobs)} image{'s' if len(jobs) != 1 else ''} takes {seconds}."
+        if to_capture:
+            seconds = "a few seconds" if to_capture <= 12 else (
+                "under a minute" if to_capture <= 60 else "a few minutes")
+            images = f"Capturing {to_capture} viewport image{'s' if to_capture != 1 else ''} takes {seconds}."
+            if preloaded:
+                images += f" {preloaded} FEM capture{'s' if preloaded != 1 else ''} already saved."
+        elif preloaded:
+            images = f"Using {preloaded} saved FEM viewport capture{'s' if preloaded != 1 else ''}."
+        elif jobs:
+            images = "No viewport capture is available."
         else:
             images = "No viewport images to capture."
         self._estimate.setText(f"≈ {n} pages, about {size}. {images}")
-        self._note.setText("Images are captured from the 3D view when you export." if jobs
+        self._note.setText("DFM images are captured from the 3D view when you export." if to_capture
                            else f"About {size}.")
         self.btn_export.setEnabled(n > 0)
         self._render_preview()
@@ -1005,7 +1039,8 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _thumbnail(self, page: Page, ratio: float) -> QtGui.QImage:
         """A small page image, drawn large and scaled down so text keeps its proportions."""
-        return page_thumbnail(page, self.template, self._ts, _ThumbnailGrid.THUMB_W, ratio)
+        return page_thumbnail(page, self.template, self._ts, _ThumbnailGrid.THUMB_W, ratio,
+                              self._images)
 
     def _mode_changed(self, *_):
         single = self.btn_single.isChecked()
@@ -1024,7 +1059,8 @@ class ReportDialog(QtWidgets.QDialog):
         index = min(max(index, 0), len(self._pages) - 1)
         self._single_index = index
         width = max(220, min(self._single_area.viewport().width() - 40, 820))
-        image = page_image(self._pages[index], self.template, self._ts, width, {}, self.devicePixelRatioF())
+        image = page_image(self._pages[index], self.template, self._ts, width, self._images,
+                           self.devicePixelRatioF())
         self._single.set_image(image)
         self._single_label.setText(f"{index + 1} / {len(self._pages)}")
         self.btn_prev.setEnabled(index > 0)

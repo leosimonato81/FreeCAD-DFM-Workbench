@@ -537,19 +537,26 @@ class ReportLayout:
         self.new_page("Cover")
         self._cover()
 
-        sections = rule_sections(self.data, self.settings)
+        sections = (rule_sections(self.data, self.settings)
+                    if self.data.dfm_available else [])
         for i, section in enumerate(sections):
             self._rule_section(section, first=(i == 0))
 
-        passed = passed_sections(self.data, self.settings)
+        passed = (passed_sections(self.data, self.settings)
+                  if self.data.dfm_available and self.settings.include_dfm_tables else [])
         if passed:
             self._passed(passed, after_rules=bool(sections))
 
         listed = max(self.settings.list_at_most, 0)
-        if self.settings.findings_appendix and any(len(s.findings) > listed for s in sections):
+        if (self.data.dfm_available and self.settings.include_dfm_tables
+                and self.settings.findings_appendix
+                and any(len(s.findings) > listed for s in sections)):
             self._findings_appendix(sections)
-        if self.settings.settings_appendix:
+        if self.data.dfm_available and self.settings.include_dfm_tables and self.settings.settings_appendix:
             self._settings_appendix()
+        if self.data.fem_result is not None and (
+                self.settings.include_fem_tables or self.settings.include_fem_images):
+            self._fem_section()
 
         self._chrome()
         return self.pages
@@ -571,10 +578,11 @@ class ReportLayout:
         bh = self.ts.line_height(self.F_BOLD) + 12
         y = self.y
         asc = self.ts.ascent(self.F_BOLD)
-        verdict = d.verdict
+        verdict = d.verdict if d.dfm_available else "FEM results included"
+        verdict_color = d.verdict_color if d.dfm_available else self.t.accent
 
         def banner(c, _i, y=y):
-            c.rect(self.left, y, self.cw, bh, fill=d.verdict_color, radius=3)
+            c.rect(self.left, y, self.cw, bh, fill=verdict_color, radius=3)
             c.text(self.left + 10, y + (bh - asc) / 2 + asc - 0.8, verdict, self.F_BOLD, "#ffffff")
 
         self.emit(banner)
@@ -604,7 +612,7 @@ class ReportLayout:
         self.space(10)
 
         # Overview image, or the model as designed and the overview side by side.
-        if s.overview_image:
+        if d.dfm_available and s.include_dfm_images and s.overview_image:
             keys = [k for k in ("design", "overview") if k in self._jobs] or ["overview"]
             gap = 10
             w = self.image_width(keys[0])
@@ -620,32 +628,33 @@ class ReportLayout:
             self.space(8)
 
         # Counts.
-        counts = d.counts()
-        tiles = [("errors", "Errors", SEVERITY[Severity.ERROR]),
-                 ("warnings", "Warnings", SEVERITY[Severity.WARNING]),
-                 ("passed", "Rules passed", PASS),
-                 ("ignored", "Ignored", IGNORED)]
-        tile_gap = 8
-        tw = (self.cw - tile_gap * 3) / 4
-        th = self.ts.line_height(self.F_STAT) + self.ts.line_height(self.F_TINY) + 10
-        self.need(th + 8)
-        y = self.y
-        for i, (key, label, color) in enumerate(tiles):
-            x = self.left + i * (tw + tile_gap)
-            n = counts[key]
-            sa, ta = self.ts.ascent(self.F_STAT), self.ts.ascent(self.F_TINY)
-            slh = self.ts.line_height(self.F_STAT)
+        if d.dfm_available:
+            counts = d.counts()
+            tiles = [("errors", "Errors", SEVERITY[Severity.ERROR]),
+                     ("warnings", "Warnings", SEVERITY[Severity.WARNING]),
+                     ("passed", "Rules passed", PASS),
+                     ("ignored", "Ignored", IGNORED)]
+            tile_gap = 8
+            tw = (self.cw - tile_gap * 3) / 4
+            th = self.ts.line_height(self.F_STAT) + self.ts.line_height(self.F_TINY) + 10
+            self.need(th + 8)
+            y = self.y
+            for i, (key, label, color) in enumerate(tiles):
+                x = self.left + i * (tw + tile_gap)
+                n = counts[key]
+                sa, ta = self.ts.ascent(self.F_STAT), self.ts.ascent(self.F_TINY)
+                slh = self.ts.line_height(self.F_STAT)
 
-            def tile(c, _i, x=x, n=n, label=label, color=color):
-                c.rect(x, y, tw, th, stroke=LINE, radius=3, width=0.6)
-                c.text(x + tw / 2, y + 5 + sa, str(n), self.F_STAT, color if n else FAINT, "center")
-                c.text(x + tw / 2, y + 5 + slh + ta, label, self.F_TINY, MUTED, "center")
+                def tile(c, _i, x=x, n=n, label=label, color=color):
+                    c.rect(x, y, tw, th, stroke=LINE, radius=3, width=0.6)
+                    c.text(x + tw / 2, y + 5 + sa, str(n), self.F_STAT, color if n else FAINT, "center")
+                    c.text(x + tw / 2, y + 5 + slh + ta, label, self.F_TINY, MUTED, "center")
 
-            self.emit(tile)
-        self.y += th + 14
+                self.emit(tile)
+            self.y += th + 14
 
         # Summary by criticality.
-        if s.summary_table:
+        if d.dfm_available and s.include_dfm_tables and s.summary_table:
             sections = rule_sections(d, s) + passed_sections(d, s)
             # Always by criticality, as the heading says; failed before passed.
             sections.sort(key=lambda sec: (sec.criticality.value, sec.passed, sec.rule.label))
@@ -810,6 +819,8 @@ class ReportLayout:
 
     def _rule_images(self, sec: RuleSection) -> None:
         s = self.settings
+        if not s.include_dfm_images:
+            return
         if s.image_mode == "per_rule":
             key = rule_image_key(sec.rule)
             job = self._jobs.get(key)
@@ -853,6 +864,8 @@ class ReportLayout:
 
     def _findings_table(self, sec: RuleSection) -> None:
         s = self.settings
+        if not s.include_dfm_tables:
+            return
         limit = max(s.list_at_most, 0)
         shown = sec.findings[:limit] if limit else []
         rest = len(sec.findings) - len(shown)
@@ -921,6 +934,52 @@ class ReportLayout:
                          " · ".join(self.limits_text(rule)) or "—"])
         self.table([Column("Rule", 0.36), Column("Criticality", 0.15), Column("Target and limit", 0.49)],
                    rows, "Appendix")
+
+    def _fem_section(self) -> None:
+        """Append FEM summaries and captured views without changing DFM pages."""
+        result = self.data.fem_result
+        self.new_page("FEM results")
+        self.heading("FEM results", self.F_H1)
+        identity = result.object_label or result.object_name or "FEM result"
+        self.paragraph(f"Result object: {identity}", self.F_SMALL, MUTED)
+
+        if self.settings.include_fem_tables:
+            self.space(8)
+            if result.quantities:
+                rows = []
+                for quantity in result.quantities:
+                    rows.append([
+                        quantity.label, quantity.unit, str(quantity.count),
+                        f"{quantity.minimum:.6g}", str(quantity.node_at_minimum or "—"),
+                        f"{quantity.maximum:.6g}", str(quantity.node_at_maximum or "—"),
+                    ])
+                self.table([
+                    Column("Quantity", 0.22), Column("Unit", 0.08),
+                    Column("Nodes", 0.10, "right"), Column("Minimum", 0.15, "right"),
+                    Column("Node", 0.12, "right"), Column("Maximum", 0.15, "right"),
+                    Column("Node", 0.18, "right"),
+                ], rows, "FEM summary")
+            else:
+                self.paragraph(
+                    "No displacement or von Mises values are available in this result object.",
+                    self.F_SMALL, MUTED)
+
+        images = [job for job in self._jobs.values() if job.key.startswith("fem:")]
+        if self.settings.include_fem_images and images:
+            self.space(12)
+            self.heading("FEM viewport images", self.F_H2)
+            for job in images:
+                w = min(self.cw, (self.H - 2 * self.m) * 0.72 * job.aspect)
+                h = w / job.aspect
+                cap = (self.H - 2 * self.m) * 0.72
+                if h > cap:
+                    w, h = cap * job.aspect, cap
+                self.need(h + 20, "FEM viewport images")
+                x = self.left + (self.cw - w) / 2
+                self.image_box(x, self.y, w, h, job.key, None)
+                self.y += h + 3
+                self.y += self.caption(x, self.y, w, job.caption)
+                self.space(8)
 
     # -- Header and footer ---------------------------------------------
 

@@ -6,7 +6,7 @@ import FreeCAD as App  # type: ignore
 import FreeCADGui as Gui  # type: ignore
 
 
-from .gui import task_setup, task_show_normals, process_library
+from .gui import task_setup, task_show_normals, process_library, fem_report_task as _fem_report_task
 from .gui import preferences
 from .gui.preferences import (
     DFMPreferencesGeneral,
@@ -60,7 +60,36 @@ class DFMWorkbench(Gui.Workbench):
         return "Gui::PythonWorkbench"
 
 
+class DFMFEMWorkbench(Gui.Workbench):
+    """Combined workbench entry that keeps the regular DFM entry available."""
+
+    MenuText = "DFM + FEM"
+    ToolTip = "Design for manufacturing analysis and reports that include saved FEM results"
+    Icon = ":/icons/dfm_analysis.svg"
+
+    def Initialize(self):
+        self.list = [
+            "DFM_SetupAnalysis",
+            "DFM_ProcessLibrary",
+            "DFM_DraftAnalysis",
+            "DFM_ThicknessAnalysis",
+            "DFM_FEMReport",
+        ]
+        self.appendToolbar("DFM + FEM", self.list)
+        self.appendMenu("DFM + FEM", self.list)
+
+    def Activated(self):
+        return
+
+    def Deactivated(self):
+        return
+
+    def GetClassName(self):
+        return "Gui::PythonWorkbench"
+
+
 Gui.addWorkbench(DFMWorkbench())
+Gui.addWorkbench(DFMFEMWorkbench())
 Gui.addPreferencePage(DFMPreferencesGeneral, "DFM")
 Gui.addPreferencePage(DFMPreferencesResults, "DFM")
 Gui.addPreferencePage(DFMPreferencesReports, "DFM")

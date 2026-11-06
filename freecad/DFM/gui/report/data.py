@@ -12,7 +12,7 @@ can be previewed and tested without FreeCAD.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from ...core.models import CheckResult, Severity
 from ...core.processes.process import RuleFeedback, RuleLimit
@@ -39,6 +39,9 @@ class ReportData:
     derived_hint: Callable[[Rulebook], str] = lambda rule: ""
     created: datetime = field(default_factory=datetime.now)
     run: Optional[int] = None
+    dfm_available: bool = True
+    fem_result: Any = None
+    fem_images: list["ReportImage"] = field(default_factory=list)
 
     # ------------------------------------------------------------------
 
@@ -86,6 +89,27 @@ def _fill(text: str, values: dict[str, str]) -> str:
     import re
 
     return re.sub(r"\{(\w+)\}", lambda m: str(values.get(m.group(1), "") or ""), text).strip()
+
+
+def fem_only_report_data(document: str, model: str, fem_result, fem_images=None) -> ReportData:
+    """Create an FEM-only snapshot without synthetic DFM rules or verdicts."""
+    from ...core.rules import Criticality
+
+    return ReportData(
+        document=document,
+        model=model,
+        process="FEM",
+        process_kind="Finite element results",
+        material="",
+        verdict="",
+        verdict_color="#596579",
+        grouped={},
+        active_rules=[],
+        criticality=lambda _rule: Criticality.LOW,
+        dfm_available=False,
+        fem_result=fem_result,
+        fem_images=list(fem_images or []),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +220,17 @@ class ImageJob:
     findings: list[CheckResult]  # highlighted; empty for the plain model
     caption: str = ""
     aspect: float = 4 / 3  # width / height
+    image: Any = None
+
+
+@dataclass
+class ReportImage:
+    """A viewport image already captured from the current FEM display."""
+
+    key: str
+    caption: str
+    image: Any
+    include: bool = True
 
 
 OVERVIEW_ASPECT = 16 / 9
@@ -207,7 +242,7 @@ def image_jobs(
 ) -> list[ImageJob]:
     """Every image the report needs, in the order they appear."""
     jobs: list[ImageJob] = []
-    if settings.overview_image:
+    if data.dfm_available and settings.include_dfm_images and settings.overview_image:
         shown = [f for s in rule_sections(data, settings) for f in s.findings if not f.ignore]
         if settings.design_image:
             # Side by side: the part as its designer colored it, then the findings.
@@ -216,19 +251,22 @@ def image_jobs(
         else:
             jobs.append(ImageJob("overview", shown, "All findings highlighted", OVERVIEW_ASPECT))
 
-    if settings.image_mode == "per_rule":
+    if data.dfm_available and settings.include_dfm_images and settings.image_mode == "per_rule":
         for section in rule_sections(data, settings):
             eligible = [f for f in section.findings if image_eligible(f, settings)]
             if eligible:
                 n = len(eligible)
                 caption = f"{n} finding{'s' if n != 1 else ''} highlighted"
                 jobs.append(ImageJob(rule_image_key(section.rule), eligible, caption))
-    elif settings.image_mode == "per_finding":
+    elif data.dfm_available and settings.include_dfm_images and settings.image_mode == "per_finding":
         picks = default_image_picks(data, settings) if picks is None else picks
         for section in rule_sections(data, settings):
             for f in section.findings:
                 if id(f) in picks and image_eligible(f, settings):
                     jobs.append(ImageJob(finding_image_key(f), [f], finding_caption(f)))
+    if settings.include_fem_images:
+        jobs.extend(ImageJob(image.key, [], image.caption, 4 / 3, image.image)
+                    for image in data.fem_images if image.include and image.image is not None)
     return jobs
 
 

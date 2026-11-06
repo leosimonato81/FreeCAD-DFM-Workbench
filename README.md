@@ -85,6 +85,11 @@ Analyse wall thickness or draft angles of your parts, and create nice graphics.
 
 Install directly from the **FreeCAD Addon Manager**.
 
+After installation, the workbench selector provides **DFM** for the regular
+DFM workflow and **DFM + FEM** for the same tools plus the FEM report command.
+The regular DFM workbench remains available for analysis and viewport
+highlighting without opening the FEM report flow.
+
 <div align="center">
 
 | Version | Support |
