@@ -190,6 +190,19 @@ class ExportTab(QtWidgets.QWidget):
         root.setSpacing(6)
 
         root.addWidget(section_header("PDF report"))
+        mode_row = QtWidgets.QHBoxLayout()
+        mode_row.addWidget(QtWidgets.QLabel("Report content"))
+        self.mode_combo = QtWidgets.QComboBox()
+        self.mode_combo.addItem("DFM analysis", "dfm")
+        self.mode_combo.addItem("FEM analysis", "fem")
+        self.mode_combo.addItem("DFM + FEM", "combined")
+        self.mode_combo.setToolTip(
+            "DFM uses the results in this analysis task. FEM reads an existing CCX_Results "
+            "object from the active FreeCAD document; it never starts a solver.")
+        self.mode_combo.currentIndexChanged.connect(self._mode_changed)
+        mode_row.addWidget(self.mode_combo, 1)
+        root.addLayout(mode_row)
+
         tiles = QtWidgets.QHBoxLayout()
         tiles.setSpacing(6)
         self._group = QtWidgets.QButtonGroup(self)
@@ -215,7 +228,20 @@ class ExportTab(QtWidgets.QWidget):
         self.fem_report_tab.capture_requested.connect(lambda: self.fem_capture_requested.emit())
         self.fem_report_tab.results_available.connect(self._set_fem_available)
         self.fem_report_tab.selection_changed.connect(lambda: self.report_content_changed.emit())
-        self.fem_group.toggled.connect(lambda _on: self.report_content_changed.emit())
+        self._mode_syncing = False
+        self.fem_group.toggled.connect(self._fem_group_toggled)
+        try:
+            from ....gui.report.settings import ReportSettings
+            saved_mode = ReportSettings.load().report_mode
+            saved_index = self.mode_combo.findData(saved_mode)
+            self._mode_syncing = True
+            if saved_index >= 0:
+                self.mode_combo.setCurrentIndex(saved_index)
+                self.fem_group.setChecked(saved_mode != "dfm")
+        except Exception:
+            pass
+        finally:
+            self._mode_syncing = False
         fem_box.addWidget(self.fem_report_tab)
         root.addWidget(self.fem_group)
 
@@ -290,10 +316,49 @@ class ExportTab(QtWidgets.QWidget):
     def include_fem(self) -> bool:
         return self.fem_group.isChecked() and self.fem_group.isEnabled()
 
+    @property
+    def report_mode(self) -> str:
+        return str(self.mode_combo.currentData() or "dfm")
+
+    def _mode_changed(self, _index: int) -> None:
+        mode = self.report_mode
+        self._mode_syncing = True
+        try:
+            self.fem_group.setChecked(mode != "dfm")
+        finally:
+            self._mode_syncing = False
+        self.report_content_changed.emit()
+
+    def _fem_group_toggled(self, checked: bool) -> None:
+        if self._mode_syncing:
+            return
+        desired = ("combined" if checked else "dfm")
+        if desired != self.report_mode:
+            index = self.mode_combo.findData(desired)
+            if index >= 0:
+                self.mode_combo.setCurrentIndex(index)
+        self.report_content_changed.emit()
+
+    def set_fem_available(self, available: bool) -> None:
+        current_mode = self.report_mode
+        self._mode_syncing = True
+        self.mode_combo.blockSignals(True)
+        for index in range(self.mode_combo.count() - 1, 0, -1):
+            self.mode_combo.removeItem(index)
+        if available:
+            self.mode_combo.addItem("FEM analysis", "fem")
+            self.mode_combo.addItem("DFM + FEM", "combined")
+        index = self.mode_combo.findData(current_mode if available else "dfm")
+        self.mode_combo.setCurrentIndex(max(index, 0))
+        self.fem_group.setChecked(self.report_mode != "dfm")
+        self.mode_combo.blockSignals(False)
+        self._mode_syncing = False
+
     def _set_fem_available(self, available: bool) -> None:
         self.fem_group.setEnabled(bool(available))
         if not available:
             self.fem_group.setChecked(False)
+        self.set_fem_available(available)
         self.report_content_changed.emit()
 
     # ------------------------------------------------------------------

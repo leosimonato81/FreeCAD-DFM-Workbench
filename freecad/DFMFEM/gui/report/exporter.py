@@ -120,7 +120,8 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
                     f"The report could not be written to\n{path}\n\n"
                     "Check that the folder exists and the file isn't open in another program.")
             return False
-        if settings.include_fem_csv and data.fem_result is not None:
+        if (settings.report_mode in ("fem", "combined")
+                and settings.include_fem_csv and data.fem_result is not None):
             try:
                 from ...fem.results import write_nodal_csv
 
@@ -137,7 +138,10 @@ def export_pdf(parent: Optional[QtWidgets.QWidget], path: str, data: ReportData,
                         App.Console.PrintWarning("DFM: FEM CSV was not replaced.\n")
                         csv_path = ""
                 if csv_path:
-                    write_nodal_csv(csv_path, data.fem_result, settings.report_language)
+                    write_nodal_csv(
+                        csv_path, data.fem_result, settings.report_language,
+                        include_displacement=settings.include_fem_displacement,
+                        include_von_mises=settings.include_fem_von_mises)
             except Exception as exc:
                 App.Console.PrintError(f"DFM: could not write FEM CSV data: {exc}\n")
                 QtWidgets.QMessageBox.warning(

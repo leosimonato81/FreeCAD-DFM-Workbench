@@ -282,7 +282,7 @@ class ViewportCapture:
         # Images showing several findings make the part see-through, so
         # findings on the far side still show. Close-ups face their finding.
         see_through = 0 if job.key.startswith("finding:") else self.settings.see_through
-        fem_clean_view = job.key.startswith("fem-camera:")
+        fem_clean_view = job.key.startswith(("fem-camera:", "fem-only:"))
         self._set_fem_result_visibility(fem_clean_view)
         # The FEM result object keeps its own contour map. Remove the DFM
         # duplicate-shape overlay before rendering a paired FEM image, while
@@ -293,10 +293,16 @@ class ViewportCapture:
             # The FEM mesh is the subject of this image. Hide the coincident
             # base CAD shape to prevent its neutral faces from covering the map.
             self.bridge.set_target_visible(False)
+        else:
+            # Restore the analyzed shape for every DFM view, even if a FEM
+            # view was rendered immediately before it.
+            self.bridge.set_target_visible(True)
 
-        source_key = job.key.removeprefix("fem-camera:")
+        source_key = job.key.removeprefix("fem-camera:").removeprefix("fem-only:")
+        fem_only_view = job.key.startswith("fem-only:")
         overview = source_key in ("overview", "design")
-        name = self.settings.overview_view if overview else self.settings.view_direction
+        name = ("current" if fem_only_view else self.settings.overview_view) if overview \
+            else self.settings.view_direction
         zoom = self.settings.framing == "zoom" and job.findings and not overview
         self._place_camera(name, job.findings, job.findings if zoom else [], width / max(height, 1))
 
@@ -318,11 +324,11 @@ class ViewportCapture:
 
     def _remember_fem_visibility(self) -> None:
         """Remember FEM result visibility before producing separated report views."""
-        from ...fem.results import is_result_object
+        from ...fem.results import iter_fem_visual_objects
 
         doc = getattr(App, "ActiveDocument", None)
         try:
-            self._fem_objects = [obj for obj in doc.Objects if is_result_object(obj)] if doc else []
+            self._fem_objects = list(iter_fem_visual_objects(doc))
         except Exception:
             self._fem_objects = []
         self._fem_visibility.clear()

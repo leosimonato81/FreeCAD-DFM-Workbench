@@ -91,10 +91,13 @@ _PT_REPORT_TEXT = {
     "FEM views using DFM camera positions": "Vistas FEM com enquadramentos da câmera DFM",
     "Additional FEM captures": "Capturas FEM adicionais",
     "Result object": "Objeto de resultados", "FEM result": "Resultado FEM",
+    "Source file": "Arquivo de origem",
     "FEM summary": "Resumo FEM", "Quantity": "Grandeza", "Unit": "Unidade",
     "Nodes": "Nós", "Minimum": "Mínimo", "Node": "Nó", "Maximum": "Máximo",
     "FEM viewport images": "Imagens da visualização FEM",
     "FEM view": "Vista FEM",
+    "FEM result — current view": "Resultado FEM — vista atual",
+    "No scalar fields": "Nenhuma grandeza escalar",
     "Plastic Injection Molding": "Moldagem por injeção de plástico",
     "Additive Manufacturing": "Manufatura aditiva",
     "Minimum Draft Angle": "Ângulo mínimo de saída",
@@ -108,6 +111,7 @@ _PT_REPORT_TEXT = {
     "Maximum Bed Contact Area": "Área máxima de contato com a mesa",
     "Maximum Cusp Height": "Altura máxima do degrau entre camadas",
     "Maximum Support Material": "Material de suporte estimado",
+    "Values for": "Valores para",
     "Minimum inclination of faces relative to the pull direction.":
         "Inclinação mínima das faces em relação à direção de extração.",
     "Minimum distance between opposing surfaces.":
@@ -139,8 +143,15 @@ _PT_REPORT_TEXT = {
         "Este relatório apresenta somente magnitude do deslocamento e tensão de von Mises. Sem limites admissíveis do material ou critério de falha, não avalia segurança nem ruptura.",
     "No displacement or von Mises values are available in this result object.":
         "Este objeto não contém valores de deslocamento ou tensão de von Mises.",
+    "No FEM scalar fields are selected for the summary table.":
+        "Nenhuma grandeza escalar FEM foi selecionada para a tabela-resumo.",
+    "No values for the selected FEM quantities are available.":
+        "Não há valores disponíveis para as grandezas FEM selecionadas.",
     "Displacement magnitude": "Magnitude do deslocamento",
+    "displacement magnitude": "magnitude do deslocamento",
     "von Mises stress": "Tensão de von Mises",
+    "Without material allowables or a failure criterion, this report does not assess safety or failure.":
+        "Sem limites admissíveis do material ou critério de falha, este relatório não avalia segurança nem ruptura.",
     "Displacement": "Deslocamento", "Stress": "Tensão",
     "cont.": "cont.", "Page": "Página", "of": "de",
     "Failed": "Reprovado", "Warning": "Aviso", "Successful": "Aprovado",
@@ -152,10 +163,31 @@ def _report_text(text: str, language: str) -> str:
     """Translate report chrome while leaving user supplied finding text intact."""
     if language != "pt_BR":
         return text
+    import re
+    # Process feedback uses numeric values interpolated into fixed English
+    # templates. Translate those templates without changing their values.
+    patterns = (
+        (r"Wall thickness ([0-9.]+)mm is below the ([0-9.]+)mm minimum \(1x nozzle diameter\)\. The slicer cannot lay down a single extrusion line in this gap and will either skip it or force an under-extruded pass\. Widen to at least one nozzle width\.",
+         r"A espessura de parede de \1 mm está abaixo do mínimo de \2 mm (1x o diâmetro do bico). O fatiador não consegue depositar uma linha de extrusão neste vão e pode ignorá-lo ou forçar uma passagem subextrudada. Aumente a espessura para pelo menos a largura do bico."),
+        (r"Wall thickness ([0-9.]+)mm is below the recommended ([0-9.]+)mm \(2x nozzle diameter\)\. Too narrow to fit two extrusion widths, so perimeters will not fuse properly\. Expect poor layer bonding and a rough surface\.",
+         r"A espessura de parede de \1 mm está abaixo dos \2 mm recomendados (2x o diâmetro do bico). A largura não comporta duas linhas de extrusão; os perímetros podem não se unir adequadamente, resultando em baixa adesão entre camadas e superfície irregular."),
+        (r"Overhang angle ([0-9.]+)° exceeds the ([0-9.]+)° limit\. Extruded filament has nothing to rest on and will sag or curl\. Add supports, chamfer the edge, or reorient the part\.",
+         r"O ângulo de balanço de \1° excede o limite de \2°. O filamento extrudado não tem apoio e pode ceder ou empenar. Considere adicionar suportes, chanfrar a borda ou reorientar a peça."),
+        (r"Cusp height ([0-9.]+)mm exceeds the ([0-9.]+)mm limit\. Layer steps are clearly visible and the surface will feel rough to the touch\. Steepen the surface, reduce the layer height, or plan to sand after printing\.",
+         r"A altura de degrau de \1 mm excede o limite de \2 mm. Os degraus entre camadas podem ficar visíveis e a superfície irregular ao toque. Considere aumentar a inclinação, reduzir a altura de camada ou prever acabamento por lixamento."),
+        (r"Cusp height ([0-9.]+)mm exceeds the recommended ([0-9.]+)mm\. At this surface angle each printed layer creates a visible step\. Expect a rough surface finish on this face\.",
+         r"A altura de degrau de \1 mm excede os \2 mm recomendados. Neste ângulo, cada camada impressa cria um degrau visível. É esperado um acabamento mais áspero nesta face."),
+    )
+    for pattern, replacement in patterns:
+        translated = re.fullmatch(pattern, text)
+        if translated:
+            return re.sub(pattern, replacement, text)
     if text.endswith(" (cont.)"):
         return _report_text(text[:-8], language) + " (continuação)"
     if text.startswith("Result object: "):
         return f"Objeto de resultados: {text[len('Result object: '):]}"
+    if text.startswith("Selected result fields: "):
+        text = f"Grandezas selecionadas: {text[len('Selected result fields: '):]}"
     if text.startswith("FEM report: "):
         return f"Relatório FEM: {text[len('FEM report: '):]}"
     if text.startswith("DFM + FEM report: "):
@@ -194,9 +226,14 @@ def _report_text(text: str, language: str) -> str:
     if text.endswith(" finding highlighted"):
         amount = text[:-len(" finding highlighted")]
         return f"{amount} achado DFM destacado"
-    for source, translated in _PT_REPORT_TEXT.items():
-        if source in text:
-            text = text.replace(source, translated)
+    # Replace complete phrases/words, longest first. Plain substring
+    # replacement turned "Criticality" into "Críticaity" and "Passed" into
+    # "Aprovadoed" in translated reports.
+    for source, translated in sorted(_PT_REPORT_TEXT.items(),
+                                    key=lambda item: len(item[0]), reverse=True):
+        text = re.sub(rf"(?<!\w){re.escape(source)}(?!\w)", translated, text)
+    if text.startswith("Grandezas selecionadas:"):
+        text = text.replace(" and ", " e ").replace("no scalar fields", "nenhuma grandeza escalar")
     text = text.replace(" errors", " erros").replace(" error", " erro")
     text = text.replace(" warnings", " avisos").replace(" warning", " aviso")
     text = text.replace(" ignored", " ignorados")
@@ -505,6 +542,14 @@ class ReportLayout:
         self._extra_rules: dict[int, int] = {}
         self._jobs = {job.key: job for job in image_jobs(data, settings, picks)}
 
+    @property
+    def _show_dfm(self) -> bool:
+        return self.data.dfm_available and self.settings.report_mode in ("dfm", "combined")
+
+    @property
+    def _show_fem(self) -> bool:
+        return self.data.fem_result is not None and self.settings.report_mode in ("fem", "combined")
+
     # -- Flow ----------------------------------------------------------
 
     @property
@@ -644,12 +689,13 @@ class ReportLayout:
             self.y += row_h
 
     def image_box(self, x: float, y: float, w: float, h: float, key: str,
-                  highlight: Optional[str]) -> None:
+                  highlight: Optional[str], framed: bool = True) -> None:
         def op(c, images, key=key):
             image = images.get(key)
             if image is not None and not image.isNull():
                 c.image(x, y, w, h, image)
-                c.rect(x, y, w, h, stroke=LINE, width=0.5)
+                if framed:
+                    c.rect(x, y, w, h, stroke=LINE, width=0.5)
             else:
                 paint_placeholder(c, x, y, w, h, highlight)
 
@@ -678,25 +724,25 @@ class ReportLayout:
         self.new_page("Cover")
         self._cover()
 
-        sections = (rule_sections(self.data, self.settings)
-                    if self.data.dfm_available else [])
+        sections = rule_sections(self.data, self.settings) if self._show_dfm else []
         for i, section in enumerate(sections):
             self._rule_section(section, first=(i == 0))
 
         passed = (passed_sections(self.data, self.settings)
-                  if self.data.dfm_available and self.settings.include_dfm_tables else [])
+                  if self._show_dfm and self.settings.include_dfm_tables else [])
         if passed:
             self._passed(passed, after_rules=bool(sections))
 
         listed = max(self.settings.list_at_most, 0)
-        if (self.data.dfm_available and self.settings.include_dfm_tables
+        if (self._show_dfm and self.settings.include_dfm_tables
                 and self.settings.findings_appendix
                 and any(len(s.findings) > listed for s in sections)):
             self._findings_appendix(sections)
-        if self.data.dfm_available and self.settings.include_dfm_tables and self.settings.settings_appendix:
+        if self._show_dfm and self.settings.include_dfm_tables and self.settings.settings_appendix:
             self._settings_appendix()
-        if self.data.fem_result is not None and (
-                self.settings.include_fem_tables or self.settings.include_fem_images):
+        if self._show_fem and (self.settings.include_fem_tables
+                               or self.settings.include_fem_images
+                               or self.settings.include_fem_csv):
             self._fem_section()
 
         self._chrome()
@@ -706,9 +752,14 @@ class ReportLayout:
 
     def _cover(self) -> None:
         d, s = self.data, self.settings
-        self.paragraph(d.title(s), self.F_TITLE)
+        title = d.title(s)
+        if s.report_mode == "fem" and title.startswith("DFM report:"):
+            title = title.replace("DFM report:", "FEM report:", 1)
+        elif s.report_mode == "combined" and title.startswith("DFM report:"):
+            title = title.replace("DFM report:", "DFM + FEM report:", 1)
+        self.paragraph(title, self.F_TITLE)
         self.space(2)
-        sub = [d.process, d.material]
+        sub = ["FEM"] if s.report_mode == "fem" else [d.process, d.material]
         if d.run is not None:
             sub.append(f"Run {d.run}")
         if s.report_language == "pt_BR":
@@ -724,8 +775,8 @@ class ReportLayout:
         bh = self.ts.line_height(self.F_BOLD) + 12
         y = self.y
         asc = self.ts.ascent(self.F_BOLD)
-        verdict = d.verdict if d.dfm_available else "FEM results included"
-        verdict_color = d.verdict_color if d.dfm_available else self.t.accent
+        verdict = d.verdict if self._show_dfm else "FEM results included"
+        verdict_color = d.verdict_color if self._show_dfm else self.t.accent
 
         def banner(c, _i, y=y):
             c.rect(self.left, y, self.cw, bh, fill=verdict_color, radius=3)
@@ -738,9 +789,11 @@ class ReportLayout:
         # Details.
         details = [
             ("Project", s.project), ("Prepared by", s.prepared_by), ("Revision", s.revision),
-            ("Document", d.document), ("Model", d.model), ("Process", d.process),
-            ("Material", d.material), ("Date", d.created.strftime("%Y-%m-%d")),
+            ("Document", d.document), ("Model", d.model),
         ]
+        if s.report_mode != "fem":
+            details.extend([("Process", d.process), ("Material", d.material)])
+        details.append(("Date", d.created.strftime("%Y-%m-%d")))
         details = [(k, v) for k, v in details if v]
         col_w = self.cw / 2
         lh = self.ts.line_height(self.F_SMALL) + 2
@@ -759,7 +812,7 @@ class ReportLayout:
         self.space(10)
 
         # Overview image, or the model as designed and the overview side by side.
-        if d.dfm_available and s.include_dfm_images and s.overview_image:
+        if self._show_dfm and s.include_dfm_images and s.overview_image:
             keys = [k for k in ("design", "overview") if k in self._jobs] or ["overview"]
             gap = 10
             w = self.image_width(keys[0])
@@ -775,7 +828,7 @@ class ReportLayout:
             self.space(8)
 
         # Counts.
-        if d.dfm_available:
+        if self._show_dfm:
             counts = d.counts()
             tiles = [("errors", "Errors", SEVERITY[Severity.ERROR]),
                      ("warnings", "Warnings", SEVERITY[Severity.WARNING]),
@@ -802,7 +855,7 @@ class ReportLayout:
             self.y += th + 14
 
         # Summary by criticality.
-        if d.dfm_available and s.include_dfm_tables and s.summary_table:
+        if self._show_dfm and s.include_dfm_tables and s.summary_table:
             sections = rule_sections(d, s) + passed_sections(d, s)
             # Always by criticality, as the heading says; failed before passed.
             sections.sort(key=lambda sec: (sec.criticality.value, sec.passed, sec.rule.label))
@@ -1093,18 +1146,29 @@ class ReportLayout:
         self.heading("FEM results", self.F_H1)
         identity = result.object_label or result.object_name or "FEM result"
         self.paragraph(f"Result object: {identity}", self.F_SMALL, MUTED)
+        if self.data.fem_document_path:
+            self.paragraph(f"Source file: {self.data.fem_document_path}", self.F_SMALL, MUTED)
         self.paragraph(
             "FEM results are read from the saved FreeCAD result object. No solver was run for this report.",
             self.F_SMALL, MUTED)
+        selected_fields = []
+        if self.settings.include_fem_displacement:
+            selected_fields.append("displacement magnitude")
+        if self.settings.include_fem_von_mises:
+            selected_fields.append("von Mises stress")
+        field_text = " and ".join(selected_fields) if selected_fields else "no scalar fields"
         self.paragraph(
-            "Only displacement magnitude and von Mises stress are reported. Without material allowables or a failure criterion, this report does not assess safety or failure.",
+            f"Selected result fields: {field_text}. Without material allowables or a failure criterion, this report does not assess safety or failure.",
             self.F_SMALL, MUTED)
 
         if self.settings.include_fem_tables:
             self.space(8)
-            if result.quantities:
+            quantities = [q for q in result.quantities
+                          if ((q.key == "DisplacementLengths" and self.settings.include_fem_displacement)
+                              or (q.key == "vonMises" and self.settings.include_fem_von_mises))]
+            if quantities:
                 rows = []
-                for quantity in result.quantities:
+                for quantity in quantities:
                     rows.append([
                         quantity.label, quantity.unit, str(quantity.count),
                         f"{quantity.minimum:.6g}", str(quantity.node_at_minimum or "—"),
@@ -1117,19 +1181,21 @@ class ReportLayout:
                     Column("Node", 0.18, "right"),
                 ], rows, "FEM summary")
             else:
-                self.paragraph(
-                    "No displacement or von Mises values are available in this result object.",
-                    self.F_SMALL, MUTED)
+                message = ("No values for the selected FEM quantities are available."
+                           if self.settings.include_fem_displacement
+                           or self.settings.include_fem_von_mises
+                           else "No FEM scalar fields are selected for the summary table.")
+                self.paragraph(message, self.F_SMALL, MUTED)
 
         images = [job for job in self._jobs.values()
-                  if job.key.startswith(("fem:", "fem-camera:"))]
+                  if job.key.startswith(("fem:", "fem-camera:", "fem-only:"))]
         if self.settings.include_fem_images and images:
             self.space(12)
             self.heading("FEM viewport images", self.F_H2)
             groups = (
                 ([job for job in images if job.key.startswith("fem-camera:")],
                  "FEM views using DFM camera positions"),
-                ([job for job in images if job.key.startswith("fem:")],
+                ([job for job in images if job.key.startswith(("fem:", "fem-only:"))],
                  "Additional FEM captures"),
             )
             for group, title in groups:
@@ -1148,7 +1214,9 @@ class ReportLayout:
             w, h = cap * job.aspect, cap
         self.need(h + 20, "FEM viewport images")
         x = self.left + (self.cw - w) / 2
-        self.image_box(x, self.y, w, h, job.key, None)
+        # Keep simulation images edge-to-edge. The FEM viewport's color scale
+        # belongs visually with the result mesh and should not be boxed apart.
+        self.image_box(x, self.y, w, h, job.key, None, framed=False)
         self.y += h + 3
         self.y += self.caption(x, self.y, w, job.caption)
         self.space(8)

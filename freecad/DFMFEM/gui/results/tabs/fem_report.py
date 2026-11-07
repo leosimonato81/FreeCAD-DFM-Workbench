@@ -16,6 +16,7 @@ class FEMReportTab(QtWidgets.QWidget):
     export_requested = QtCore.Signal()
     configure_requested = QtCore.Signal()
     selection_changed = QtCore.Signal()
+    visibility_changed = QtCore.Signal(bool)
     results_available = QtCore.Signal(bool)
 
     def __init__(self, parent=None, embedded: bool = False):
@@ -47,6 +48,30 @@ class FEMReportTab(QtWidgets.QWidget):
         self.summary_label = QtWidgets.QLabel("Nenhum resultado FEM detectado.")
         self.summary_label.setWordWrap(True)
         root.addWidget(self.summary_label)
+        self.document_label = QtWidgets.QLabel(
+            "FEM usa resultados já salvos no documento aberto; não executa o solver.")
+        self.document_label.setWordWrap(True)
+        self.document_label.setStyleSheet("color: palette(mid); font-size: 10px;")
+        root.addWidget(self.document_label)
+
+        self.show_in_viewport = QtWidgets.QCheckBox(
+            "Mostrar o resultado FEM selecionado no visualizador 3D")
+        self.show_in_viewport.setToolTip(
+            "Sobrepõe a malha FEM ao modelo para comparar visualmente com os realces DFM. "
+            "O estado de exibição é restaurado ao desmarcar ou fechar a tarefa.")
+        self.show_in_viewport.toggled.connect(self.visibility_changed.emit)
+        root.addWidget(self.show_in_viewport)
+
+        quantities = QtWidgets.QGroupBox("Grandezas FEM incluídas")
+        quantity_layout = QtWidgets.QHBoxLayout(quantities)
+        self.include_displacement = QtWidgets.QCheckBox("Magnitude do deslocamento")
+        self.include_displacement.setChecked(True)
+        self.include_von_mises = QtWidgets.QCheckBox("Tensão de von Mises")
+        self.include_von_mises.setChecked(True)
+        for checkbox in (self.include_displacement, self.include_von_mises):
+            checkbox.toggled.connect(lambda _on: self.selection_changed.emit())
+            quantity_layout.addWidget(checkbox)
+        root.addWidget(quantities)
 
         options = QtWidgets.QGroupBox("Conteúdo FEM")
         options_layout = QtWidgets.QVBoxLayout(options)
@@ -131,7 +156,17 @@ class FEMReportTab(QtWidgets.QWidget):
         if index >= 0:
             self.result_combo.setCurrentIndex(index)
         self.result_combo.blockSignals(False)
+        selected = next((obj for obj in objects
+                         if str(getattr(obj, "Name", "")) == self.result_combo.currentData()), None)
+        try:
+            self.show_in_viewport.blockSignals(True)
+            self.show_in_viewport.setChecked(bool(selected and selected.ViewObject.Visibility))
+        except Exception:
+            self.show_in_viewport.setChecked(False)
+        finally:
+            self.show_in_viewport.blockSignals(False)
         self.result_combo.setEnabled(bool(objects))
+        self.show_in_viewport.setEnabled(bool(objects))
         if not objects:
             self.summary_label.setText("Nenhum objeto FEM de resultados foi encontrado neste documento.")
             self.export_button.setEnabled(False)
@@ -144,6 +179,18 @@ class FEMReportTab(QtWidgets.QWidget):
             self.capture_button.setEnabled(True)
             self.follow_dfm_cameras.setEnabled(True)
         self.results_available.emit(bool(objects))
+        try:
+            import FreeCAD as App  # type: ignore
+            doc = App.ActiveDocument
+            file_name = getattr(doc, "FileName", "") if doc else ""
+            source = file_name or (f"{getattr(doc, 'Label', 'sem nome')} (não salvo como .FCStd)"
+                                   if doc else "documento sem nome")
+            self.document_label.setText(
+                f"Documento FEM lido: {source}. "
+                "Esperado: um resultado salvo como CCX_Results (Fem::FemResultObjectPython). "
+                "Execute e salve a análise na bancada FEM nativa; este relatório não recalcula.")
+        except Exception:
+            pass
         self.selection_changed.emit()
 
     def set_dfm_available(self, available: bool) -> None:

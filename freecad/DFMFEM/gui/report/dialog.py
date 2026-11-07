@@ -295,6 +295,7 @@ class ReportDialog(QtWidgets.QDialog):
         self.setWindowTitle("Export PDF report")
         self.data = data
         self.settings = (settings or ReportSettings.load()).copy()
+        self._last_report_mode = self.settings.report_mode
         self.template = (template or get_template(self.settings.template)).copy()
         self.picks: Optional[set[int]] = set(picks) if picks is not None else None
         self._capture_factory = capture_factory
@@ -336,8 +337,10 @@ class ReportDialog(QtWidgets.QDialog):
         left_box.setContentsMargins(8, 8, 4, 6)
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self._scroll(self._content_tab()), "Content")
+        self._dfm_images_tab_index = -1
         if self.data.dfm_available:
-            self.tabs.addTab(self._scroll(self._images_tab()), "DFM images")
+            self._dfm_images_tab_index = self.tabs.addTab(
+                self._scroll(self._images_tab()), "DFM images")
         self.tabs.addTab(self._scroll(self._layout_tab()), "Layout")
         left_box.addWidget(self.tabs, 1)
         links = QtWidgets.QHBoxLayout()
@@ -526,6 +529,16 @@ class ReportDialog(QtWidgets.QDialog):
         f.row("Idioma do PDF", self._bind_combo(
             "report_language", [("pt_BR", "Português (Brasil)"), ("en", "English")]))
         f.section("Report content")
+        mode_choices = [("dfm", "DFM analysis only")]
+        if self.data.fem_result is not None:
+            mode_choices.extend([("fem", "FEM analysis only"), ("combined", "DFM + FEM")])
+        if self.settings.report_mode not in {value for value, _label in mode_choices}:
+            self.settings.report_mode = "dfm"
+        f.row("Analysis", self._bind_combo("report_mode", mode_choices))
+        f.add(muted_label(
+            "FEM-only reports read saved results from the active FreeCAD document. "
+            "The file must contain the completed native FEM object CCX_Results; no solver is run.",
+            small=True))
         self.cb_include_dfm_images = self._bind_check("include_dfm_images", "DFM images")
         self.cb_include_dfm_images.setEnabled(self.data.dfm_available)
         f.add(self.cb_include_dfm_images)
@@ -538,10 +551,19 @@ class ReportDialog(QtWidgets.QDialog):
         self.cb_include_dfm_tables = self._bind_check("include_dfm_tables", "DFM tables")
         self.cb_include_dfm_tables.setEnabled(self.data.dfm_available)
         f.add(self.cb_include_dfm_tables)
-        f.add(self._bind_check("include_fem_tables", "FEM result summary table"))
-        csv_check = self._bind_check("include_fem_csv", "Also export full FEM values as CSV")
-        csv_check.setEnabled(self.data.fem_result is not None)
-        f.add(csv_check)
+        self.cb_include_fem_tables = self._bind_check(
+            "include_fem_tables", "FEM result summary table")
+        f.add(self.cb_include_fem_tables)
+        self.cb_include_fem_displacement = self._bind_check(
+            "include_fem_displacement", "Magnitude of displacement")
+        self.cb_include_fem_von_mises = self._bind_check(
+            "include_fem_von_mises", "von Mises stress")
+        f.add(self.cb_include_fem_displacement)
+        f.add(self.cb_include_fem_von_mises)
+        self.cb_include_fem_csv = self._bind_check(
+            "include_fem_csv", "Also export selected FEM nodal values as CSV")
+        self.cb_include_fem_csv.setEnabled(self.data.fem_result is not None)
+        f.add(self.cb_include_fem_csv)
         if self.data.fem_result is not None:
             count = len(self.data.fem_result.node_values)
             label = f"{self.data.fem_result.object_label}: {count:,} nodal values for displacement and von Mises."
@@ -788,9 +810,9 @@ class ReportDialog(QtWidgets.QDialog):
             f.add(_indent(cb, 12))
 
         f.section("File")
-        name = self._bind_line("file_name", "{document}_{material}_DFM_{date}")
-        name.setToolTip("The suggested file name. " + PLACEHOLDER_HELP)
-        f.row("File name", name)
+        self.ed_file_name = self._bind_line("file_name", "{document}_{material}_DFM_{date}")
+        self.ed_file_name.setToolTip("The suggested file name. " + PLACEHOLDER_HELP)
+        f.row("File name", self.ed_file_name)
         f.add(self._bind_check("open_after", "Open the PDF after exporting"))
         f.finish()
         return f
@@ -798,6 +820,19 @@ class ReportDialog(QtWidgets.QDialog):
     # -- Reactions -------------------------------------------------------
 
     def _changed(self, name: str) -> None:
+        if name == "report_mode":
+            defaults = {
+                "dfm": ("DFM report: {model}", "{document}_{material}_DFM_{date}"),
+                "fem": ("FEM report: {model}", "{document}_FEM_{date}"),
+                "combined": ("DFM + FEM report: {model}", "{document}_DFM_FEM_{date}"),
+            }
+            old_title, old_file = defaults.get(self._last_report_mode, defaults["dfm"])
+            new_title, new_file = defaults.get(self.settings.report_mode, defaults["dfm"])
+            if self.settings.title == old_title:
+                self.ed_title.setText(new_title)
+            if self.settings.file_name == old_file:
+                self.ed_file_name.setText(new_file)
+            self._last_report_mode = self.settings.report_mode
         if name in ("include_errors", "include_warnings", "include_ignored", "image_findings",
                     "images_per_rule", "group_by"):
             if not self.cb_choose.isChecked():
@@ -809,13 +844,23 @@ class ReportDialog(QtWidgets.QDialog):
 
     def _refresh_dependents(self) -> None:
         s = self.settings
+        show_dfm = self.data.dfm_available and s.report_mode in ("dfm", "combined")
+        show_fem = self.data.fem_result is not None and s.report_mode in ("fem", "combined")
+        self.cb_include_dfm_images.setEnabled(show_dfm)
+        self.cb_include_dfm_tables.setEnabled(show_dfm)
+        self.cb_include_fem_images.setEnabled(show_fem)
+        self.cb_include_fem_tables.setEnabled(show_fem)
+        self.cb_include_fem_csv.setEnabled(show_fem)
         self.cb_fem_follow_dfm.setEnabled(
-            bool(s.include_fem_images and self.data.dfm_available and self.data.fem_result is not None))
-        if self.data.dfm_available:
-            self._overview_row.setEnabled(s.overview_image)
-            self._design_row.setEnabled(s.overview_image)
+            bool(show_dfm and show_fem and s.include_fem_images))
+        self.cb_include_fem_displacement.setEnabled(show_fem)
+        self.cb_include_fem_von_mises.setEnabled(show_fem)
+        if self._dfm_images_tab_index >= 0:
+            self.tabs.setTabEnabled(self._dfm_images_tab_index, show_dfm)
+        self._overview_row.setEnabled(show_dfm and s.overview_image)
+        self._design_row.setEnabled(show_dfm and s.overview_image)
         self._notes_row.setVisible(s.show_notes)
-        if self.data.dfm_available:
+        if show_dfm:
             per_finding = s.image_mode == "per_finding"
             images = s.image_mode != "none"
             for w in (self.cb_image_findings, self.cb_framing, self.cb_direction):
@@ -828,6 +873,10 @@ class ReportDialog(QtWidgets.QDialog):
             self.picker.setEnabled(self.cb_choose.isChecked())
             if self.picker.topLevelItemCount() == 0:
                 self._fill_picker()
+        else:
+            for w in (self.cb_image_findings, self.cb_framing, self.cb_direction,
+                      self.sp_images, self.cb_choose, self.picker):
+                w.setEnabled(False)
         path = os.path.expanduser(s.company_logo)
         if s.company_logo and logos.company_logo(s.company_logo) is None:
             self._logo_note.setText("This file can't be read as an image." if os.path.exists(path)

@@ -91,6 +91,10 @@ class TaskResultsPresenter:
         self.view.on_fem_capture = self.handle_fem_capture
         self.view.fem_report_tab.set_dfm_available(True)
         self.view.fem_report_tab.selection_changed.connect(self._fem_selection_changed)
+        self.view.fem_report_tab.visibility_changed.connect(self._set_fem_overlay_visible)
+        self._fem_overlay_visibility = None
+        self._fem_overlay_transparency = None
+        self._fem_summary_cache = {}
         self._refresh_fem_results()
 
         # Material switching cache: material_name -> list[CheckResult]
@@ -322,37 +326,35 @@ class TaskResultsPresenter:
             values_title=self._values_title,
             feedback=process.rule_feedback.get,
             derived_hint=lambda rule: process.archetype.derived_rules.get(rule, ""),
+            fem_document_path=(getattr(doc, "FileName", "") if doc is not None else ""),
         )
-        include_fem = self.view.export_tab.include_fem if include_fem is None else include_fem
-        if include_fem:
-            tab = self.view.fem_report_tab
-            result_obj = self._selected_fem_object()
-            if result_obj is not None:
-                from ...fem.results import summarize_result
-
-                data.fem_result = summarize_result(result_obj)
-            data.fem_images = tab.selected_images()
+        result_obj = self._selected_fem_object()
+        if result_obj is not None:
+            data.fem_result = self._fem_summary(result_obj)
+        data.fem_images = self.view.fem_report_tab.selected_images()
         return data
 
     def _report_settings(self, include_fem: bool | None = None):
         from ...gui.report.settings import ReportSettings
 
         settings = ReportSettings.load().copy(**self._report_fields)
-        include_fem = self.view.export_tab.include_fem if include_fem is None else include_fem
-        if not include_fem:
-            return settings.copy(include_fem_images=False, include_fem_tables=False,
-                                 include_fem_csv=False)
         tab = self.view.fem_report_tab
-        if settings.title == "DFM report: {model}":
+        mode = self.view.export_tab.report_mode
+        if mode == "combined" and settings.title == "DFM report: {model}":
             settings.title = "DFM + FEM report: {model}"
-        if settings.file_name == "{document}_{material}_DFM_{date}":
-            settings.file_name = "{document}_DFM_FEM_{date}"
+        elif mode == "fem" and settings.title == "DFM report: {model}":
+            settings.title = "FEM report: {model}"
+        if mode != "dfm" and settings.file_name == "{document}_{material}_DFM_{date}":
+            settings.file_name = "{document}_DFM_FEM_{date}" if mode == "combined" else "{document}_FEM_{date}"
         return settings.copy(
+            report_mode=mode,
             include_dfm_images=tab.include_dfm_images.isChecked(),
             include_dfm_tables=tab.include_dfm_tables.isChecked(),
             include_fem_images=tab.include_images.isChecked(),
             include_fem_tables=tab.include_tables.isChecked(),
             include_fem_csv=tab.include_csv.isChecked(),
+            include_fem_displacement=tab.include_displacement.isChecked(),
+            include_fem_von_mises=tab.include_von_mises.isChecked(),
             dfm_highlights_in_fem_view=tab.include_dfm_highlights.isChecked(),
             fem_follow_dfm_views=tab.follow_dfm_cameras.isChecked(),
         )
@@ -371,18 +373,85 @@ class TaskResultsPresenter:
         except Exception:
             return None
 
+    def _fem_summary(self, obj):
+        """Read and cache the 40k+ nodal arrays once per selected result object."""
+        key = id(obj)
+        if key not in self._fem_summary_cache:
+            from ...fem.results import summarize_result
+            self._fem_summary_cache[key] = summarize_result(obj)
+        return self._fem_summary_cache[key]
+
     def _fem_selection_changed(self) -> None:
         obj = self._selected_fem_object()
         if obj is None:
             self.view.fem_report_tab.set_summary(None)
             return
         try:
-            from ...fem.results import summarize_result
-
-            self.view.fem_report_tab.set_summary(summarize_result(obj))
+            self.view.fem_report_tab.set_summary(self._fem_summary(obj))
         except Exception as exc:
             self.view.fem_report_tab.set_summary(None)
             App.Console.PrintWarning(f"DFM: could not read FEM result values: {exc}\n")
+        if self.view.fem_report_tab.show_in_viewport.isChecked():
+            self._set_fem_overlay_visible(True)
+
+    def _set_fem_overlay_visible(self, visible: bool, restore: bool = False) -> None:
+        """Show the saved FEM result over the DFM model, restoring prior view state."""
+        from ...fem.results import iter_fem_visual_objects
+
+        doc = getattr(App, "ActiveDocument", None)
+        fem_objects = iter_fem_visual_objects(doc)
+        target = self.bridge.target_object
+        if self._fem_overlay_visibility is None:
+            self._fem_overlay_visibility = {
+                id(obj): (obj, bool(obj.ViewObject.Visibility))
+                for obj in fem_objects
+                if hasattr(obj, "ViewObject")
+            }
+            try:
+                self._fem_overlay_transparency = int(target.ViewObject.Transparency)
+            except Exception:
+                self._fem_overlay_transparency = None
+        if visible:
+            selected = self._selected_fem_object()
+            for obj in fem_objects:
+                try:
+                    if obj is selected:
+                        obj.ViewObject.Visibility = True
+                    elif str(getattr(obj, "TypeId", "")) == "Fem::FemResultObjectPython":
+                        obj.ViewObject.Visibility = False
+                except Exception:
+                    continue
+            if selected is not None and self._fem_overlay_transparency is not None:
+                try:
+                    target.ViewObject.Transparency = max(self._fem_overlay_transparency, 55)
+                except Exception:
+                    pass
+        elif self._fem_overlay_visibility is not None:
+            if restore:
+                for obj, was_visible in self._fem_overlay_visibility.values():
+                    try:
+                        obj.ViewObject.Visibility = was_visible
+                    except Exception:
+                        continue
+                self._fem_overlay_visibility = None
+            else:
+                for obj in fem_objects:
+                    if str(getattr(obj, "TypeId", "")) == "Fem::FemResultObjectPython":
+                        try:
+                            obj.ViewObject.Visibility = False
+                        except Exception:
+                            continue
+            if self._fem_overlay_transparency is not None:
+                try:
+                    target.ViewObject.Transparency = self._fem_overlay_transparency
+                except Exception:
+                    pass
+            if restore:
+                self._fem_overlay_transparency = None
+        try:
+            Gui.updateGui()
+        except Exception:
+            pass
 
     def handle_fem_capture(self) -> None:
         from ...gui.utils.view import get_active_view
@@ -413,22 +482,26 @@ class TaskResultsPresenter:
         temp_path = None
         image = None
         try:
-            from ...fem.results import iter_result_objects
+            from ...fem.results import iter_fem_visual_objects
 
             doc = getattr(App, "ActiveDocument", None)
-            for fem_obj in iter_result_objects(doc):
+            for fem_obj in iter_fem_visual_objects(doc):
                 try:
                     visible = bool(fem_obj.ViewObject.Visibility)
                     result_visibility.append((fem_obj, visible))
-                    fem_obj.ViewObject.Visibility = fem_obj is result_obj
+                    fem_obj.ViewObject.Visibility = (
+                        fem_obj is result_obj
+                        and str(getattr(fem_obj, "TypeId", "")) == "Fem::FemResultObjectPython")
                 except Exception:
                     continue
+            # The coincident CAD solid and FEM constraints/pipeline obscure the
+            # result mesh in a saved viewport image. Keep this capture isolated.
+            self.bridge.set_target_visible(False)
             if hide_dfm:
                 self.bridge.remove_finding_overlay()
                 if markers_were_active:
                     self._marker_controller.deactivate()
                 self.bridge.highlight_faces_and_edges_by_index([], [])
-                self.bridge.set_target_visible(False)
             fd, temp_path = tempfile.mkstemp(prefix="dfm_fem_view_", suffix=".png")
             os.close(fd)
             Gui.updateGui()
@@ -489,7 +562,7 @@ class TaskResultsPresenter:
             hide_annotations=self._marker_controller.deactivate,
             show_annotations=show_markers,
             fem_result_object=(self._selected_fem_object()
-                               if self.view.export_tab.include_fem else None),
+                               if self.view.export_tab.report_mode != "dfm" else None),
         )
 
     def _remember_report_fields(self, settings) -> None:
@@ -503,10 +576,10 @@ class TaskResultsPresenter:
             self._report_data(), self._report_settings(), self._report_capture,
             parent=Gui.getMainWindow(),
         )
-        dialog.exec()
-        self._remember_report_fields(dialog.settings)
-        self._sync_report_content_settings(dialog.settings)
-        self._refresh_report_preview(force=True)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self._remember_report_fields(dialog.settings)
+            self._sync_report_content_settings(dialog.settings)
+            self._refresh_report_preview(force=True)
 
     def handle_export_pdf(self):
         """Export a PDF report straight away, with the saved report settings."""
@@ -536,11 +609,17 @@ class TaskResultsPresenter:
 
     def _sync_report_content_settings(self, settings) -> None:
         tab = self.view.fem_report_tab
+        export_tab = self.view.export_tab
+        mode_index = export_tab.mode_combo.findData(settings.report_mode)
+        if mode_index >= 0:
+            export_tab.mode_combo.setCurrentIndex(mode_index)
         tab.include_dfm_images.setChecked(settings.include_dfm_images)
         tab.include_dfm_tables.setChecked(settings.include_dfm_tables)
         tab.include_images.setChecked(settings.include_fem_images)
         tab.include_tables.setChecked(settings.include_fem_tables)
         tab.include_csv.setChecked(settings.include_fem_csv)
+        tab.include_displacement.setChecked(settings.include_fem_displacement)
+        tab.include_von_mises.setChecked(settings.include_fem_von_mises)
         tab.follow_dfm_cameras.setChecked(settings.fem_follow_dfm_views)
 
     def _refresh_report_preview(self, force: bool = False):
@@ -595,6 +674,7 @@ class TaskResultsPresenter:
         tab.set_presets(previews, note)
 
     def handle_cleanup(self):
+        self._set_fem_overlay_visible(False, restore=True)
         self._marker_controller.deactivate()
         self.bridge.restore()
         Gui.Selection.addSelection(self.bridge.target_object)

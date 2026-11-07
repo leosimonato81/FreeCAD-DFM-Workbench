@@ -91,25 +91,36 @@ workbench remains installed separately and keeps its existing name and tools.
 
 ## DFM + FEM report beta
 
-Start with **Análises** and complete the DFM analysis. The results panel's
-**Análises** tab contains the report presets, CSV export and the optional FEM
-section; there is no separate FEM report command. The DFM result is the source
-for the report's automatic camera positions.
+Use **Análises** to run DFM or to open a FEM-only report from saved results. In
+the DFM results panel, the **Análises** tab offers three report modes: DFM,
+FEM, and DFM + FEM. A DFM-only report does not need FEM results in the file.
+For FEM-only, use **Generate FEM-only report from saved results…** in the same
+Análises task; it does not require a DFM run. The DFM + FEM mode uses DFM
+findings to choose useful camera positions, then reports the two analyses in
+separate sections.
 
-When the FEM section is enabled, choose a saved FEM result object. The combined
-PDF presents the DFM findings and FEM results on separate pages. FEM images can
-reuse each selected automatic DFM camera position while hiding DFM overlays and
-other FEM result objects; the selected FEM color map remains visible. Additional
-FEM views can be captured manually from the current camera. The viewport and
-object visibility are restored after report capture.
+FEM-only reads the currently open `.FCStd` file. It must contain a completed
+native FEM result object, normally named `CCX_Results` with type
+`Fem::FemResultObjectPython`, and the original CAD solid for camera framing.
+Confirm the displayed document path before exporting; results are not loaded
+from another file and no solver is run. In the DFM results panel, the FEM
+visibility checkbox can show the selected result over the DFM model for visual
+comparison. It restores the previous visibility and solid transparency when
+turned off or when the task closes.
 
-The report reads saved displacement magnitude and von Mises stress values; it
-does not run a solver or interpret material failure or safety criteria. Summary
-tables and nodal CSV export are optional. PDF headings, standard DFM rule names
-and descriptions, and FEM fields are available in Brazilian Portuguese and
-English. Free text from project notes, company details and process feedback
-keeps its authored language. The project logo remains configurable in the
-report layout.
+FEM report images hide the coincident solid, FEM pipeline, mesh and constraint
+objects so the selected result map can be seen without those overlays. Combined
+reports can reuse the selected automatic DFM camera positions; FEM-only reports
+use the current camera direction. Additional FEM views can be captured
+individually. The camera, object visibility and DFM highlights are restored
+after report capture. Image and table inclusion are independently configurable.
+
+Choose magnitude of displacement, von Mises stress, or both for the FEM
+summary table and optional nodal CSV. The report uses the saved result values;
+it does not run a solver or infer safety or failure without a material criterion.
+PDF headings and supported DFM rule text are available in Brazilian Portuguese
+and English. User-entered notes and company details keep their authored
+language. The project logo remains configurable in the report layout.
 
 This combined report workflow is in beta. It has not yet been validated end to
 end in FreeCAD 1.1.4 with multiple FEM result views and final PDF printing.

@@ -26,6 +26,7 @@ def _opt(default, persist: bool = True):
 # Choices for the options with a fixed set of values: key -> [(value, label)].
 CHOICES: dict[str, list[tuple[str, str]]] = {
     "report_language": [("pt_BR", "Português (Brasil)"), ("en", "English")],
+    "report_mode": [("dfm", "DFM only"), ("fem", "FEM only"), ("combined", "DFM + FEM")],
     "overview_view": [
         ("isometric", "Isometric"),
         ("current", "Current view"),
@@ -77,6 +78,7 @@ class ReportSettings:
 
     # Cover page
     report_language: str = _opt("pt_BR")
+    report_mode: str = _opt("dfm")
     title: str = _opt("DFM report: {model}")
     project: str = _opt("", persist=False)
     prepared_by: str = _opt("")
@@ -92,6 +94,8 @@ class ReportSettings:
     include_dfm_tables: bool = _opt(True)
     include_fem_tables: bool = _opt(True)
     include_fem_csv: bool = _opt(False)
+    include_fem_displacement: bool = _opt(True)
+    include_fem_von_mises: bool = _opt(True)
     dfm_highlights_in_fem_view: bool = _opt(False)
     fem_follow_dfm_views: bool = _opt(True)
 

@@ -685,7 +685,7 @@ class TaskSetup:
         self.form = Gui.PySideUic.loadUi(":/ui/task_setup.ui")  # type: ignore
         if not self.form:
             raise RuntimeError("Failed to load task_setup.ui from resources.")
-        self.form.setWindowTitle("DFM Analysis")
+        self.form.setWindowTitle("Análises")
         self.form.setWindowIcon(QtGui.QIcon(":/icons/dfm_analysis.svg"))
 
         self.registry = ProcessRegistry.get_instance()
@@ -817,6 +817,12 @@ class TaskSetup:
         f.pbRunAnalysis.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                       QtWidgets.QSizePolicy.Policy.Fixed)
         run_layout.addWidget(f.pbRunAnalysis)
+        self.fem_report_button = QtWidgets.QPushButton("Generate FEM-only report…")
+        self.fem_report_button.setToolTip(
+            "Use a saved .FCStd file containing CCX_Results from the native FEM workbench. "
+            "This report does not run a solver or require DFM results.")
+        self.fem_report_button.setMinimumHeight(26)
+        run_layout.addWidget(self.fem_report_button)
         form_layout.insertWidget(index, run_box)
         self.run_box = run_box
 
@@ -849,10 +855,16 @@ class TaskSetup:
 
     def _connect_signals(self):
         self.form.pbRunAnalysis.clicked.connect(self.on_run_clicked)
+        self.fem_report_button.clicked.connect(self._open_fem_only_report)
         self.form.pbAbort.clicked.connect(self.on_abort_clicked)
         self.form.pbSelectModel.clicked.connect(self.on_select_shape)
         self.form.cbManProcess.currentIndexChanged.connect(self.on_process_changed)
         self.form.cbMaterial.currentIndexChanged.connect(self._update_run_button_state)
+
+    def _open_fem_only_report(self) -> None:
+        from .report.fem_only import open_fem_only_report
+
+        open_fem_only_report(self.form)
 
     def _open_process_library(self, _checked: bool = False) -> None:
         try:

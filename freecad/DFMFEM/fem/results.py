@@ -103,6 +103,22 @@ def iter_result_objects(document: Any) -> tuple[Any, ...]:
     return tuple(obj for obj in objects if is_result_object(obj))
 
 
+def iter_fem_visual_objects(document: Any) -> tuple[Any, ...]:
+    """Return FEM workbench objects whose view providers can pollute captures.
+
+    This deliberately includes post-processing pipelines, constraints, meshes,
+    and result objects. They are all document data; callers only change their
+    temporary visibility and must restore it after a report capture.
+    """
+    if document is None:
+        return ()
+    try:
+        return tuple(obj for obj in document.Objects
+                     if str(getattr(obj, "TypeId", "")).startswith("Fem::"))
+    except (AttributeError, RuntimeError):
+        return ()
+
+
 def summarize_result(obj: Any) -> FEMResultSummary:
     """Read available scalar summaries from one result object.
 
@@ -171,15 +187,32 @@ def summarize_result(obj: Any) -> FEMResultSummary:
     )
 
 
-def write_nodal_csv(path: str | Path, summary: FEMResultSummary, language: str = "en") -> None:
-    """Write displacement and von Mises values, one row per native node."""
+def write_nodal_csv(path: str | Path, summary: FEMResultSummary, language: str = "en",
+                    include_displacement: bool = True,
+                    include_von_mises: bool = True) -> None:
+    """Write selected scalar fields, one row per native node."""
     with open(path, "w", newline="", encoding="utf-8-sig") as stream:
         writer = csv.writer(stream)
+        columns = []
         if language == "pt_BR":
             writer.writerow(("Objeto de resultados", summary.object_label))
-            writer.writerow(("Nó", "Magnitude do deslocamento (mm)", "Tensão de von Mises (MPa)"))
+            columns.append("Nó")
+            if include_displacement:
+                columns.append("Magnitude do deslocamento (mm)")
+            if include_von_mises:
+                columns.append("Tensão de von Mises (MPa)")
         else:
             writer.writerow(("Result object", summary.object_label))
-            writer.writerow(("Node", "Displacement magnitude (mm)", "von Mises stress (MPa)"))
+            columns.append("Node")
+            if include_displacement:
+                columns.append("Displacement magnitude (mm)")
+            if include_von_mises:
+                columns.append("von Mises stress (MPa)")
+        writer.writerow(columns)
         for row in summary.node_values:
-            writer.writerow((row.node_number, row.displacement_mm, row.von_mises_mpa))
+            values = [row.node_number]
+            if include_displacement:
+                values.append(row.displacement_mm)
+            if include_von_mises:
+                values.append(row.von_mises_mpa)
+            writer.writerow(values)
